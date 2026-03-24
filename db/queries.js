@@ -15,215 +15,252 @@ function verifyPassword(password, hash) {
   return timingSafeEqual(keyBuffer, derived);
 }
 
-export function getUserByEmail(email) {
-  return getDb()
-    .prepare(`SELECT * FROM users WHERE email = ? LIMIT 1`)
-    .get(email);
+export async function getUserByEmail(email) {
+  const db = await getDb();
+  const res = await db.query('SELECT * FROM users WHERE email = $1 LIMIT 1', [email.toLowerCase()]);
+  return res.rows[0];
 }
 
-export function getUserById(userId) {
-  return getDb()
-    .prepare(`SELECT * FROM users WHERE id = ? LIMIT 1`)
-    .get(userId);
+export async function getUserById(userId) {
+  const db = await getDb();
+  const res = await db.query('SELECT * FROM users WHERE id = $1 LIMIT 1', [userId]);
+  return res.rows[0];
 }
 
-export function createUser(email, password) {
-  const existing = getUserByEmail(email);
+export async function createUser(email, password) {
+  const existing = await getUserByEmail(email);
   if (existing) throw new Error('Email already registered');
   const passwordHash = hashPassword(password);
-  const db = getDb();
-  const { lastInsertRowid } = db
-    .prepare('INSERT INTO users (email, password_hash) VALUES (?, ?)')
-    .run(email.toLowerCase(), passwordHash);
-  return getUserById(lastInsertRowid);
+  const db = await getDb();
+  const res = await db.query(
+    'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id',
+    [email.toLowerCase(), passwordHash]
+  );
+  return getUserById(res.rows[0].id);
 }
 
-export function verifyUser(email, password) {
-  const user = getUserByEmail(email.toLowerCase());
+export async function verifyUser(email, password) {
+  const user = await getUserByEmail(email.toLowerCase());
   if (!user || !user.password_hash) return null;
   if (!verifyPassword(password, user.password_hash)) return null;
   return user;
 }
 
-export function createOAuthUser(email, displayName, avatarUrl) {
-  const existing = getUserByEmail(email);
+export async function createOAuthUser(email, displayName, avatarUrl) {
+  const existing = await getUserByEmail(email);
   if (existing) {
-    // Update existing user with OAuth info if needed
-    updateUser(existing.id, { 
+    await updateUser(existing.id, { 
       display_name: existing.display_name || displayName, 
       avatar_url: existing.avatar_url || avatarUrl 
     });
     return getUserById(existing.id);
   }
-  const db = getDb();
-  const { lastInsertRowid } = db
-    .prepare('INSERT INTO users (email, display_name, avatar_url) VALUES (?, ?, ?)')
-    .run(email.toLowerCase(), displayName, avatarUrl);
-  return getUserById(lastInsertRowid);
+  const db = await getDb();
+  const res = await db.query(
+    'INSERT INTO users (email, display_name, avatar_url) VALUES ($1, $2, $3) RETURNING id',
+    [email.toLowerCase(), displayName, avatarUrl]
+  );
+  return getUserById(res.rows[0].id);
 }
 
-export function setResetToken(email, token, expiry) {
-  const db = getDb();
-  const res = db.prepare('UPDATE users SET reset_token = ?, reset_token_expiry = ? WHERE email = ?').run(token, expiry, email.toLowerCase());
-  return res.changes > 0;
+export async function setResetToken(email, token, expiry) {
+  const db = await getDb();
+  const res = await db.query(
+    'UPDATE users SET reset_token = $1, reset_token_expiry = $2 WHERE email = $3',
+    [token, expiry, email.toLowerCase()]
+  );
+  return res.rowCount > 0;
 }
 
-export function getUserByResetToken(token) {
-  return getDb()
-    .prepare('SELECT * FROM users WHERE reset_token = ? AND reset_token_expiry > ? LIMIT 1')
-    .get(token, new Date().toISOString());
+export async function getUserByResetToken(token) {
+  const db = await getDb();
+  const res = await db.query(
+    'SELECT * FROM users WHERE reset_token = $1 AND reset_token_expiry > $2 LIMIT 1',
+    [token, new Date().toISOString()]
+  );
+  return res.rows[0];
 }
 
-export function updatePassword(userId, newPassword) {
+export async function updatePassword(userId, newPassword) {
   const passwordHash = hashPassword(newPassword);
-  const db = getDb();
-  db.prepare('UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expiry = NULL WHERE id = ?').run(passwordHash, userId);
+  const db = await getDb();
+  await db.query(
+    'UPDATE users SET password_hash = $1, reset_token = NULL, reset_token_expiry = NULL WHERE id = $2',
+    [passwordHash, userId]
+  );
   return true;
 }
 
-export function updateUser(userId, data) {
-  const db = getDb();
+export async function updateUser(userId, data) {
+  const db = await getDb();
   const fields = [];
   const params = [];
+  let paramIdx = 1;
   
   if (data.display_name !== undefined) {
-    fields.push('display_name = ?');
+    fields.push(`display_name = $${paramIdx++}`);
     params.push(data.display_name);
   }
   if (data.avatar_url !== undefined) {
-    fields.push('avatar_url = ?');
+    fields.push(`avatar_url = $${paramIdx++}`);
     params.push(data.avatar_url);
   }
   
   if (fields.length === 0) return getUserById(userId);
   
   params.push(userId);
-  db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+  await db.query(`UPDATE users SET ${fields.join(', ')} WHERE id = $${paramIdx}`, params);
   return getUserById(userId);
 }
 
-export function getActiveSession(userId) {
-  return getDb()
-    .prepare(`SELECT * FROM sessions WHERE user_id = ? AND punch_out_time IS NULL ORDER BY punch_in_time DESC LIMIT 1`)
-    .get(userId);
+export async function getActiveSession(userId) {
+  const db = await getDb();
+  const res = await db.query(
+    'SELECT * FROM sessions WHERE user_id = $1 AND punch_out_time IS NULL ORDER BY punch_in_time DESC LIMIT 1',
+    [userId]
+  );
+  return res.rows[0];
 }
 
-export function getSessionById(sessionId) {
-  return getDb().prepare(`SELECT * FROM sessions WHERE id = ?`).get(sessionId);
+export async function getSessionById(sessionId) {
+  const db = await getDb();
+  const res = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+  return res.rows[0];
 }
 
-export function getActiveBreak(sessionId) {
-  return getDb()
-    .prepare(`SELECT * FROM breaks WHERE session_id = ? AND break_end IS NULL ORDER BY break_start DESC LIMIT 1`)
-    .get(sessionId);
+export async function getActiveBreak(sessionId) {
+  const db = await getDb();
+  const res = await db.query(
+    'SELECT * FROM breaks WHERE session_id = $1 AND break_end IS NULL ORDER BY break_start DESC LIMIT 1',
+    [sessionId]
+  );
+  return res.rows[0];
 }
 
-export function punchIn(userId, notes = null) {
+export async function punchIn(userId, notes = null) {
   if (!userId) throw new Error('Not authenticated');
-  const db = getDb();
-  if (getActiveSession(userId)) throw new Error('Already punched in');
+  if (await getActiveSession(userId)) throw new Error('Already punched in');
 
+  const db = await getDb();
   const now = new Date().toISOString();
-  const { lastInsertRowid } = db
-    .prepare(`INSERT INTO sessions (user_id, punch_in_time, notes) VALUES (?, ?, ?)`)
-    .run(userId, now, notes);
-  return getSessionById(lastInsertRowid);
+  const res = await db.query(
+    'INSERT INTO sessions (user_id, punch_in_time, notes) VALUES ($1, $2, $3) RETURNING id',
+    [userId, now, notes]
+  );
+  return getSessionById(res.rows[0].id);
 }
 
-export function createManualSession(userId, data) {
+export async function createManualSession(userId, data) {
   if (!userId) throw new Error('Not authenticated');
-  const db = getDb();
-  const { lastInsertRowid } = db
-    .prepare(`INSERT INTO sessions (user_id, punch_in_time, punch_out_time, notes) VALUES (?, ?, ?, ?)`)
-    .run(userId, data.punch_in_time, data.punch_out_time, data.notes);
-  return getSessionById(lastInsertRowid);
+  const db = await getDb();
+  const res = await db.query(
+    'INSERT INTO sessions (user_id, punch_in_time, punch_out_time, notes) VALUES ($1, $2, $3, $4) RETURNING id',
+    [userId, data.punch_in_time, data.punch_out_time, data.notes]
+  );
+  return getSessionById(res.rows[0].id);
 }
 
-export function updateSession(sessionId, userId, data) {
-  const db = getDb();
-  const session = getSessionById(sessionId);
+export async function updateSession(sessionId, userId, data) {
+  const session = await getSessionById(sessionId);
   if (!session || session.user_id !== userId) throw new Error('Session not found');
 
+  const db = await getDb();
   const fields = [];
   const params = [];
-  if (data.punch_in_time) { fields.push('punch_in_time = ?'); params.push(data.punch_in_time); }
-  if (data.punch_out_time !== undefined) { fields.push('punch_out_time = ?'); params.push(data.punch_out_time); }
-  if (data.notes !== undefined) { fields.push('notes = ?'); params.push(data.notes); }
+  let paramIdx = 1;
+
+  if (data.punch_in_time) { fields.push(`punch_in_time = $${paramIdx++}`); params.push(data.punch_in_time); }
+  if (data.punch_out_time !== undefined) { fields.push(`punch_out_time = $${paramIdx++}`); params.push(data.punch_out_time); }
+  if (data.notes !== undefined) { fields.push(`notes = $${paramIdx++}`); params.push(data.notes); }
 
   if (fields.length === 0) return session;
   params.push(sessionId);
-  db.prepare(`UPDATE sessions SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+  await db.query(`UPDATE sessions SET ${fields.join(', ')} WHERE id = $${paramIdx}`, params);
   return getSessionById(sessionId);
 }
 
-export function deleteSession(sessionId, userId) {
-  const db = getDb();
-  const session = getSessionById(sessionId);
+export async function deleteSession(sessionId, userId) {
+  const session = await getSessionById(sessionId);
   if (!session || session.user_id !== userId) throw new Error('Session not found');
-  db.prepare(`DELETE FROM sessions WHERE id = ?`).run(sessionId);
+  const db = await getDb();
+  await db.query('DELETE FROM sessions WHERE id = $1', [sessionId]);
   return true;
 }
 
-export function punchOut(sessionId, userId) {
+export async function punchOut(sessionId, userId) {
   if (!userId) throw new Error('Not authenticated');
-  const db = getDb();
-  const session = getSessionById(sessionId);
+  const session = await getSessionById(sessionId);
   if (!session || session.user_id !== userId) throw new Error('Session not found');
   if (session.punch_out_time) throw new Error('Already punched out');
 
+  const db = await getDb();
   const now = new Date().toISOString();
-  const activeBreak = getActiveBreak(sessionId);
+  const activeBreak = await getActiveBreak(sessionId);
   if (activeBreak) {
-    db.prepare(`UPDATE breaks SET break_end = ? WHERE id = ?`).run(now, activeBreak.id);
+    await db.query('UPDATE breaks SET break_end = $1 WHERE id = $2', [now, activeBreak.id]);
   }
-  db.prepare(`UPDATE sessions SET punch_out_time = ? WHERE id = ?`).run(now, sessionId);
+  await db.query('UPDATE sessions SET punch_out_time = $1 WHERE id = $2', [now, sessionId]);
   return getSessionById(sessionId);
 }
 
-export function startBreak(sessionId, userId) {
+export async function startBreak(sessionId, userId) {
   if (!userId) throw new Error('Not authenticated');
-  const db = getDb();
-  const session = getSessionById(sessionId);
+  const session = await getSessionById(sessionId);
   if (!session || session.user_id !== userId) throw new Error('Session not found');
   if (session.punch_out_time) throw new Error('Session already ended');
-  if (getActiveBreak(sessionId)) throw new Error('Break already in progress');
+  if (await getActiveBreak(sessionId)) throw new Error('Break already in progress');
 
+  const db = await getDb();
   const now = new Date().toISOString();
-  const { lastInsertRowid } = db
-    .prepare(`INSERT INTO breaks (session_id, break_start) VALUES (?, ?)`)
-    .run(sessionId, now);
-  return db.prepare(`SELECT * FROM breaks WHERE id = ?`).get(lastInsertRowid);
+  const res = await db.query(
+    'INSERT INTO breaks (session_id, break_start) VALUES ($1, $2) RETURNING id',
+    [sessionId, now]
+  );
+  const breakRes = await db.query('SELECT * FROM breaks WHERE id = $1', [res.rows[0].id]);
+  return breakRes.rows[0];
 }
 
-export function endBreak(breakId, userId) {
+export async function endBreak(breakId, userId) {
   if (!userId) throw new Error('Not authenticated');
-  const db = getDb();
-  const brk = db.prepare(`SELECT * FROM breaks WHERE id = ?`).get(breakId);
+  const db = await getDb();
+  const breakRes = await db.query('SELECT * FROM breaks WHERE id = $1', [breakId]);
+  const brk = breakRes.rows[0];
   if (!brk) throw new Error('Break not found');
-  const session = getSessionById(brk.session_id);
+  const session = await getSessionById(brk.session_id);
   if (!session || session.user_id !== userId) throw new Error('Break not found');
   if (brk.break_end) throw new Error('Break already ended');
 
   const now = new Date().toISOString();
-  db.prepare(`UPDATE breaks SET break_end = ? WHERE id = ?`).run(now, breakId);
-  return db.prepare(`SELECT * FROM breaks WHERE id = ?`).get(breakId);
+  await db.query('UPDATE breaks SET break_end = $1 WHERE id = $2', [now, breakId]);
+  const updatedBreakRes = await db.query('SELECT * FROM breaks WHERE id = $1', [breakId]);
+  return updatedBreakRes.rows[0];
 }
 
-export function getSessionBreaks(sessionId) {
-  return getDb()
-    .prepare(`SELECT * FROM breaks WHERE session_id = ? ORDER BY break_start ASC`)
-    .all(sessionId);
+export async function getSessionBreaks(sessionId) {
+  const db = await getDb();
+  const res = await db.query(
+    'SELECT * FROM breaks WHERE session_id = $1 ORDER BY break_start ASC',
+    [sessionId]
+  );
+  return res.rows;
 }
 
-export function getRecentSessions(userId, limit = 30) {
-  return getDb()
-    .prepare(`SELECT * FROM sessions WHERE user_id = ? ORDER BY punch_in_time DESC LIMIT ?`)
-    .all(userId, limit);
+export async function getRecentSessions(userId, limit = 30) {
+  const db = await getDb();
+  const res = await db.query(
+    'SELECT * FROM sessions WHERE user_id = $1 ORDER BY punch_in_time DESC LIMIT $2',
+    [userId, limit]
+  );
+  return res.rows;
 }
 
-export function getTodaySessions(userId) {
+export async function getTodaySessions(userId) {
+  const db = await getDb();
   const today = new Date().toISOString().split('T')[0];
-  return getDb()
-    .prepare(`SELECT * FROM sessions WHERE user_id = ? AND DATE(punch_in_time) = DATE(?) ORDER BY punch_in_time ASC`)
-    .all(userId, today);
+  const res = await db.query(
+    'SELECT * FROM sessions WHERE user_id = $1 AND CAST(punch_in_time AS DATE) = $2 ORDER BY punch_in_time ASC',
+    [userId, today]
+  );
+  return res.rows;
 }
+

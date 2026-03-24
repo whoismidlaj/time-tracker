@@ -7,7 +7,7 @@ export async function POST(request) {
 
     if (action === "request") {
       if (!email) return Response.json({ error: "Email is required" }, { status: 400 });
-      const user = getUserByEmail(email);
+      const user = await getUserByEmail(email);
       if (!user) {
         // For security, don't reveal if user exists
         return Response.json({ message: "If an account exists, a reset link has been generated." });
@@ -15,7 +15,7 @@ export async function POST(request) {
 
       const resetToken = randomBytes(32).toString("hex");
       const expiry = new Date(Date.now() + 3600000).toISOString(); // 1 hour
-      setResetToken(email, resetToken, expiry);
+      await setResetToken(email, resetToken, expiry);
 
       // In a real app, send email here. For now, we'll log it for the user.
       console.log(`PASSWORD RESET TOKEN for ${email}: ${resetToken}`);
@@ -27,12 +27,13 @@ export async function POST(request) {
 
     if (action === "reset") {
       if (!token || !newPassword) return Response.json({ error: "Token and password are required" }, { status: 400 });
-      const user = getUserByResetToken(token);
+      const user = await getUserByResetToken(token);
       if (!user) return Response.json({ error: "Invalid or expired token" }, { status: 400 });
 
-      updatePassword(user.id, newPassword);
+      await updatePassword(user.id, newPassword);
       return Response.json({ message: "Password updated successfully" });
     }
+
 
     return Response.json({ error: "Invalid action" }, { status: 400 });
   } catch (err) {

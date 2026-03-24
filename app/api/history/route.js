@@ -14,14 +14,15 @@ export async function GET(request) {
     const limit = Number(searchParams.get('limit')) || (type === 'today' ? 30 : 30);
 
     const sessions = type === 'today'
-      ? getTodaySessions(Number(userId))
-      : getRecentSessions(Number(userId), limit);
+      ? await getTodaySessions(Number(userId))
+      : await getRecentSessions(Number(userId), limit);
 
-    const sessionsWithBreaks = sessions.map(session => ({
+    const sessionsWithBreaks = await Promise.all(sessions.map(async (session) => ({
       ...session,
-      breaks: getSessionBreaks(session.id),
-    }));
+      breaks: await getSessionBreaks(session.id),
+    })));
     return Response.json({ sessions: sessionsWithBreaks });
+
   } catch (err) {
     console.error(err);
     return Response.json({ error: err.message }, { status: 500 });

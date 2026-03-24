@@ -10,7 +10,8 @@ export async function POST(request) {
     const userId = Number(sessionData.user.id);
 
     const { display_name, avatar_url } = await request.json();
-    const updatedUser = updateUser(Number(userId), { display_name, avatar_url });
+    const updatedUser = await updateUser(Number(userId), { display_name, avatar_url });
+
 
     return Response.json({ 
       user: { 

@@ -12,14 +12,15 @@ export async function POST(request) {
     const { action, sessionId, breakId } = await request.json();
     if (action === 'start') {
       if (!sessionId) return Response.json({ error: 'sessionId required' }, { status: 400 });
-      const brk = startBreak(Number(sessionId), Number(userId));
+      const brk = await startBreak(Number(sessionId), Number(userId));
       return Response.json({ success: true, break: brk });
     }
     if (action === 'end') {
       if (!breakId) return Response.json({ error: 'breakId required' }, { status: 400 });
-      const brk = endBreak(Number(breakId), Number(userId));
+      const brk = await endBreak(Number(breakId), Number(userId));
       return Response.json({ success: true, break: brk });
     }
+
     return Response.json({ error: 'Invalid action' }, { status: 400 });
   } catch (err) {
     console.error(err);
