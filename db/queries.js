@@ -40,9 +40,45 @@ export function createUser(email, password) {
 
 export function verifyUser(email, password) {
   const user = getUserByEmail(email.toLowerCase());
-  if (!user) return null;
+  if (!user || !user.password_hash) return null;
   if (!verifyPassword(password, user.password_hash)) return null;
   return user;
+}
+
+export function createOAuthUser(email, displayName, avatarUrl) {
+  const existing = getUserByEmail(email);
+  if (existing) {
+    // Update existing user with OAuth info if needed
+    updateUser(existing.id, { 
+      display_name: existing.display_name || displayName, 
+      avatar_url: existing.avatar_url || avatarUrl 
+    });
+    return getUserById(existing.id);
+  }
+  const db = getDb();
+  const { lastInsertRowid } = db
+    .prepare('INSERT INTO users (email, display_name, avatar_url) VALUES (?, ?, ?)')
+    .run(email.toLowerCase(), displayName, avatarUrl);
+  return getUserById(lastInsertRowid);
+}
+
+export function setResetToken(email, token, expiry) {
+  const db = getDb();
+  const res = db.prepare('UPDATE users SET reset_token = ?, reset_token_expiry = ? WHERE email = ?').run(token, expiry, email.toLowerCase());
+  return res.changes > 0;
+}
+
+export function getUserByResetToken(token) {
+  return getDb()
+    .prepare('SELECT * FROM users WHERE reset_token = ? AND reset_token_expiry > ? LIMIT 1')
+    .get(token, new Date().toISOString());
+}
+
+export function updatePassword(userId, newPassword) {
+  const passwordHash = hashPassword(newPassword);
+  const db = getDb();
+  db.prepare('UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expiry = NULL WHERE id = ?').run(passwordHash, userId);
+  return true;
 }
 
 export function updateUser(userId, data) {

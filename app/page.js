@@ -12,8 +12,10 @@ import { UserNav } from "../components/UserNav.jsx";
 import { SyncManager } from "../components/SyncManager.jsx";
 import { calcSessionDurationMs, calcTotalBreakMs } from "../lib/utils.js";
 import { Clock } from "lucide-react";
+import { useSession, signOut } from "next-auth/react";
 
 export default function HomePage() {
+  const { data: sessionData, status: authStatus, update } = useSession();
   const [status, setStatus] = useState("off");
   const [session, setSession] = useState(null);
   const [activeBreak, setActiveBreak] = useState(null);
@@ -21,10 +23,10 @@ export default function HomePage() {
   const [todaySessions, setTodaySessions] = useState([]);
   const [allSessions, setAllSessions] = useState([]);
   const [elapsed, setElapsed] = useState(0);
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
   const timerRef = useRef(null);
   
+  const user = sessionData?.user;
+  const loading = authStatus === "loading";
 
   const fetchStatus = useCallback(async () => {
     if (!user) {
@@ -73,45 +75,15 @@ export default function HomePage() {
     }
   }, [user]);
 
-  const fetchUser = useCallback(async () => {
-    try {
-      const res = await fetch('/api/auth');
-      const data = await res.json();
-      setUser(data.user || null);
-    } catch (e) {
-      console.error('Auth fetch error:', e);
-      setUser(null);
-    }
-  }, []);
-
   const refresh = useCallback(async () => {
   await Promise.all([fetchStatus(), fetchHistory()]);
 }, [fetchStatus, fetchHistory]);
 
-  // Initial load: auth only
-  useEffect(() => {
-    (async () => {
-      await fetchUser();
-      setLoading(false);
-    })();
-  }, [fetchUser]);
-
   // Load status/history after user resolves
   useEffect(() => {
-    if (!user) {
-      setStatus('off');
-      setSession(null);
-      setActiveBreak(null);
-      setBreaks([]);
-      setTodaySessions([]);
-      setAllSessions([]);
-      return;
-    }
-
-    (async () => {
-      await Promise.all([fetchStatus(), fetchHistory()]);
-    })();
-  }, [user, fetchStatus, fetchHistory]);
+    if (!user) return;
+    refresh();
+  }, [user, refresh]);
 
   // Live timer
   useEffect(() => {
@@ -143,29 +115,17 @@ export default function HomePage() {
   }
 
   if (!user) {
-    return <AuthForm onAuthenticated={async (u) => {
-      setUser(u);
-      await Promise.all([fetchStatus(), fetchHistory()]);
-    }} />;
+    return <AuthForm onAuthenticated={refresh} />;
   }
 
   async function handleLogout() {
-    try {
-      await fetch('/api/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'logout' }),
-      });
-      setUser(null);
-      setStatus('off');
-      setSession(null);
-      setActiveBreak(null);
-      setBreaks([]);
-      setTodaySessions([]);
-      setAllSessions([]);
-    } catch (err) {
-      console.error('Logout failed:', err);
-    }
+    signOut({ redirect: false });
+    setStatus('off');
+    setSession(null);
+    setActiveBreak(null);
+    setBreaks([]);
+    setTodaySessions([]);
+    setAllSessions([]);
   }
 
   return (
@@ -192,7 +152,7 @@ export default function HomePage() {
             
             <SettingsModal />
             <div className="w-px h-4 bg-border/50 mx-1" />
-            <UserNav user={user} onLogout={handleLogout} onUpdate={setUser} />
+            <UserNav user={user} onLogout={handleLogout} onUpdate={update} />
           </div>
         </div>
       </header>

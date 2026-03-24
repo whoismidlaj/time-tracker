@@ -16,9 +16,11 @@ function ensureSchema() {
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT NOT NULL UNIQUE,
-      password_hash TEXT NOT NULL,
+      password_hash TEXT,
       display_name TEXT,
       avatar_url TEXT,
+      reset_token TEXT,
+      reset_token_expiry DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -41,10 +43,32 @@ function ensureSchema() {
   `);
 
   const userInfo = db.prepare(`PRAGMA table_info(users)`).all();
-  const hasDisplayName = userInfo.some(col => col.name === 'display_name');
-  if (!hasDisplayName) {
-    db.exec(`ALTER TABLE users ADD COLUMN display_name TEXT`);
-    db.exec(`ALTER TABLE users ADD COLUMN avatar_url TEXT`);
+  const hasResetToken = userInfo.some(col => col.name === 'reset_token');
+  if (!hasResetToken) {
+    db.exec(`ALTER TABLE users ADD COLUMN reset_token TEXT`);
+    db.exec(`ALTER TABLE users ADD COLUMN reset_token_expiry DATETIME`);
+  }
+
+  const isPasswordNullable = userInfo.find(col => col.name === 'password_hash')?.notnull === 0;
+  if (!isPasswordNullable && userInfo.length > 0) {
+    // SQLite doesn't support ALTER TABLE DROP NOT NULL
+    // We recreate the table if we need to fix the constraint
+    db.exec(`
+      CREATE TABLE users_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT,
+        display_name TEXT,
+        avatar_url TEXT,
+        reset_token TEXT,
+        reset_token_expiry DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+      INSERT INTO users_new (id, email, password_hash, display_name, avatar_url, reset_token, reset_token_expiry, created_at)
+      SELECT id, email, password_hash, display_name, avatar_url, reset_token, reset_token_expiry, created_at FROM users;
+      DROP TABLE users;
+      ALTER TABLE users_new RENAME TO users;
+    `);
   }
 
   const sessionInfo = db.prepare(`PRAGMA table_info(sessions)`).all();
