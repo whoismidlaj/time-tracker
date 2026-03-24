@@ -4,3 +4,8 @@ data/time_tracker.db
 .env
 .env.local
 .DS_Store
+
+# SQLite temporary files
+*.db-shm
+*.db-wal
+*.db-journal
