@@ -166,6 +166,7 @@ export default function HomePage() {
           activeBreak={activeBreak}
           breaks={breaks}
           elapsed={elapsed}
+          onRefresh={refresh}
         />
 
         <SyncManager onSyncComplete={refresh} />
@@ -181,6 +182,7 @@ export default function HomePage() {
         <SessionHistory
           sessions={allSessions}
           activeSessionId={session?.id}
+          onRefresh={refresh}
         />
       </main>
 

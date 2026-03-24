@@ -118,16 +118,50 @@ export function getActiveBreak(sessionId) {
     .get(sessionId);
 }
 
-export function punchIn(userId) {
+export function punchIn(userId, notes = null) {
   if (!userId) throw new Error('Not authenticated');
   const db = getDb();
   if (getActiveSession(userId)) throw new Error('Already punched in');
 
   const now = new Date().toISOString();
   const { lastInsertRowid } = db
-    .prepare(`INSERT INTO sessions (user_id, punch_in_time) VALUES (?, ?)`)
-    .run(userId, now);
+    .prepare(`INSERT INTO sessions (user_id, punch_in_time, notes) VALUES (?, ?, ?)`)
+    .run(userId, now, notes);
   return getSessionById(lastInsertRowid);
+}
+
+export function createManualSession(userId, data) {
+  if (!userId) throw new Error('Not authenticated');
+  const db = getDb();
+  const { lastInsertRowid } = db
+    .prepare(`INSERT INTO sessions (user_id, punch_in_time, punch_out_time, notes) VALUES (?, ?, ?, ?)`)
+    .run(userId, data.punch_in_time, data.punch_out_time, data.notes);
+  return getSessionById(lastInsertRowid);
+}
+
+export function updateSession(sessionId, userId, data) {
+  const db = getDb();
+  const session = getSessionById(sessionId);
+  if (!session || session.user_id !== userId) throw new Error('Session not found');
+
+  const fields = [];
+  const params = [];
+  if (data.punch_in_time) { fields.push('punch_in_time = ?'); params.push(data.punch_in_time); }
+  if (data.punch_out_time !== undefined) { fields.push('punch_out_time = ?'); params.push(data.punch_out_time); }
+  if (data.notes !== undefined) { fields.push('notes = ?'); params.push(data.notes); }
+
+  if (fields.length === 0) return session;
+  params.push(sessionId);
+  db.prepare(`UPDATE sessions SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+  return getSessionById(sessionId);
+}
+
+export function deleteSession(sessionId, userId) {
+  const db = getDb();
+  const session = getSessionById(sessionId);
+  if (!session || session.user_id !== userId) throw new Error('Session not found');
+  db.prepare(`DELETE FROM sessions WHERE id = ?`).run(sessionId);
+  return true;
 }
 
 export function punchOut(sessionId, userId) {

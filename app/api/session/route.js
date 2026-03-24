@@ -1,6 +1,6 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth.js";
-import { punchIn, punchOut } from '@/db/queries.js';
+import { punchIn, punchOut, createManualSession } from '@/db/queries.js';
 
 export async function POST(request) {
   try {
@@ -17,6 +17,11 @@ export async function POST(request) {
     if (action === 'punch_out') {
       if (!sessionId) return Response.json({ error: 'sessionId required' }, { status: 400 });
       const session = punchOut(Number(sessionId), Number(userId));
+      return Response.json({ success: true, session });
+    }
+    if (action === 'manual_entry') {
+      const { punch_in_time, punch_out_time, notes } = await request.json();
+      const session = createManualSession(Number(userId), { punch_in_time, punch_out_time, notes });
       return Response.json({ success: true, session });
     }
     return Response.json({ error: 'Invalid action' }, { status: 400 });

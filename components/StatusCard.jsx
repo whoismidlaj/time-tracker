@@ -1,8 +1,16 @@
-"use client";
+import { useState, useEffect } from "react";
 import { Badge } from "./ui/badge.jsx";
 import { formatDuration, formatShortDuration, calcTotalBreakMs, calcSessionDurationMs } from "../lib/utils.js";
+import { MessageSquare, Save, Loader2 } from "lucide-react";
 
-export function StatusCard({ status, session, activeBreak, breaks = [], elapsed }) {
+export function StatusCard({ status, session, activeBreak, breaks = [], elapsed, onRefresh }) {
+  const [notes, setNotes] = useState(session?.notes || "");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setNotes(session?.notes || "");
+  }, [session?.id, session?.notes]);
+
   const isWorking = status === "working";
   const isBreak = status === "break";
   const isOff = status === "off";
@@ -10,6 +18,24 @@ export function StatusCard({ status, session, activeBreak, breaks = [], elapsed 
   const breakMs = isBreak && activeBreak
     ? Date.now() - new Date(activeBreak.break_start).getTime()
     : 0;
+
+  async function handleSaveNotes() {
+    if (!session || notes === (session.notes || "")) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/session/${session.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes }),
+      });
+      if (!res.ok) throw new Error("Failed to save notes");
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const statusConfig = {
     working: { label: "Working", variant: "working", dot: "bg-emerald-400", ring: "ring-emerald-400/30" },
@@ -31,7 +57,6 @@ export function StatusCard({ status, session, activeBreak, breaks = [], elapsed 
       }`} />
 
       <div className="relative">
-        {/* Status badge */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <div className={`relative flex h-3 w-3`}>
@@ -53,7 +78,6 @@ export function StatusCard({ status, session, activeBreak, breaks = [], elapsed 
           )}
         </div>
 
-        {/* Main timer */}
         <div className="mb-1">
           <div className={`font-mono text-5xl font-bold tracking-tight tabular-nums leading-none ${
             isOff ? "text-muted-foreground/30" : "text-foreground"
@@ -69,7 +93,25 @@ export function StatusCard({ status, session, activeBreak, breaks = [], elapsed 
           </p>
         </div>
 
-        {/* Break sub-timer */}
+        {/* Notes Input */}
+        {!isOff && session && (
+          <div className="mt-6 space-y-1.5 animate-in slide-in-from-top-2 duration-300">
+            <div className="flex items-center justify-between px-1">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+                <MessageSquare className="h-3 w-3" /> Session Notes
+              </label>
+              {saving && <Loader2 className="h-2.5 w-2.5 animate-spin text-primary" />}
+            </div>
+            <textarea
+              placeholder="What are you working on right now?"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              onBlur={handleSaveNotes}
+              className="w-full bg-background/50 border border-border/40 rounded-xl px-3 py-2 text-xs font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all resize-none min-h-[60px]"
+            />
+          </div>
+        )}
+
         {isBreak && (
           <div className="mt-5 pt-4 border-t border-border/40">
             <div className="flex items-center justify-between">
@@ -81,7 +123,6 @@ export function StatusCard({ status, session, activeBreak, breaks = [], elapsed 
           </div>
         )}
 
-        {/* Today's breaks summary */}
         {!isOff && (
           <div className="mt-4 flex items-center justify-between pt-3 border-t border-border/20">
             <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">

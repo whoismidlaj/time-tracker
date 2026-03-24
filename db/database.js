@@ -29,6 +29,7 @@ function ensureSchema() {
       user_id INTEGER,
       punch_in_time DATETIME NOT NULL,
       punch_out_time DATETIME,
+      notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
@@ -72,6 +73,10 @@ function ensureSchema() {
   }
 
   const sessionInfo = db.prepare(`PRAGMA table_info(sessions)`).all();
+  const hasNotes = sessionInfo.some(col => col.name === 'notes');
+  if (!hasNotes) {
+    db.exec(`ALTER TABLE sessions ADD COLUMN notes TEXT`);
+  }
   const hasUserId = sessionInfo.some(col => col.name === 'user_id');
 
   if (!hasUserId) {
