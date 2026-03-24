@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.jsx";
 import { Badge } from "./ui/badge.jsx";
 import { formatTime, formatDate, formatShortDuration, calcSessionDurationMs, calcTotalBreakMs } from "../lib/utils.js";
-import { Clock, Coffee, Edit2, Plus, PenSquare } from "lucide-react";
+import { Clock, Coffee, Edit2, Plus, PenSquare, Calendar } from "lucide-react";
 import { EditSessionModal } from "./EditSessionModal.jsx";
 import { Button } from "./ui/button.jsx";
 
