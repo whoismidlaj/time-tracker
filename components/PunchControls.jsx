@@ -15,11 +15,21 @@ export function PunchControls({ status, session, onRefresh }) {
 
   async function handlePunchIn() {
     setLoading(true);
+    const url = "/api/session";
+    const body = { action: "punch_in" };
+
     try {
-      const res = await fetch("/api/session", {
+      if (!navigator.onLine) {
+        const { queueAction } = await import("../lib/offline-db.js");
+        await queueAction({ url, body });
+        toast({ title: "Offline: Queued", description: "Punch in will sync once you are online.", variant: "warning" });
+        return;
+      }
+
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "punch_in" }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -35,11 +45,21 @@ export function PunchControls({ status, session, onRefresh }) {
   async function handlePunchOut() {
     setShowConfirm(false);
     setLoading(true);
+    const url = "/api/session";
+    const body = { action: "punch_out", sessionId: session.id };
+
     try {
-      const res = await fetch("/api/session", {
+      if (!navigator.onLine) {
+        const { queueAction } = await import("../lib/offline-db.js");
+        await queueAction({ url, body });
+        toast({ title: "Offline: Queued", description: "Punch out will sync once you are online.", variant: "warning" });
+        return;
+      }
+
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "punch_out", sessionId: session.id }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);

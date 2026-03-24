@@ -17,6 +17,8 @@ function ensureSchema() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
+      display_name TEXT,
+      avatar_url TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -37,6 +39,13 @@ function ensureSchema() {
       FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
     );
   `);
+
+  const userInfo = db.prepare(`PRAGMA table_info(users)`).all();
+  const hasDisplayName = userInfo.some(col => col.name === 'display_name');
+  if (!hasDisplayName) {
+    db.exec(`ALTER TABLE users ADD COLUMN display_name TEXT`);
+    db.exec(`ALTER TABLE users ADD COLUMN avatar_url TEXT`);
+  }
 
   const sessionInfo = db.prepare(`PRAGMA table_info(sessions)`).all();
   const hasUserId = sessionInfo.some(col => col.name === 'user_id');

@@ -25,7 +25,12 @@ export async function GET(request) {
     const user = getUserById(Number(userId));
     if (!user) return Response.json({ user: null });
 
-    return Response.json({ user: { id: user.id, email: user.email } });
+    return Response.json({ user: { 
+      id: user.id, 
+      email: user.email,
+      display_name: user.display_name,
+      avatar_url: user.avatar_url
+    } });
   } catch (err) {
     console.error(err);
     return Response.json({ error: err.message }, { status: 500 });

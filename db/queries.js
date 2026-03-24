@@ -45,6 +45,27 @@ export function verifyUser(email, password) {
   return user;
 }
 
+export function updateUser(userId, data) {
+  const db = getDb();
+  const fields = [];
+  const params = [];
+  
+  if (data.display_name !== undefined) {
+    fields.push('display_name = ?');
+    params.push(data.display_name);
+  }
+  if (data.avatar_url !== undefined) {
+    fields.push('avatar_url = ?');
+    params.push(data.avatar_url);
+  }
+  
+  if (fields.length === 0) return getUserById(userId);
+  
+  params.push(userId);
+  db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+  return getUserById(userId);
+}
+
 export function getActiveSession(userId) {
   return getDb()
     .prepare(`SELECT * FROM sessions WHERE user_id = ? AND punch_out_time IS NULL ORDER BY punch_in_time DESC LIMIT 1`)

@@ -1,5 +1,6 @@
 import "./globals.css";
 import { Toaster } from "../components/ui/toaster.jsx";
+import { ThemeProvider } from "../components/theme-provider.jsx";
 
 export const metadata = {
   title: "TimeTrack — Office Time Tracker",
@@ -23,15 +24,17 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
       </head>
-      <body className="font-body bg-background text-foreground antialiased">
-        {children}
-        <Toaster />
+      <body className="font-body bg-background text-foreground antialiased transition-colors duration-300" suppressHydrationWarning>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+          {children}
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );

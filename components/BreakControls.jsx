@@ -12,11 +12,21 @@ export function BreakControls({ status, session, activeBreak, onRefresh }) {
 
   async function handleStartBreak() {
     setLoading(true);
+    const url = "/api/break";
+    const body = { action: "start", sessionId: session.id };
+
     try {
-      const res = await fetch("/api/break", {
+      if (!navigator.onLine) {
+        const { queueAction } = await import("../lib/offline-db.js");
+        await queueAction({ url, body });
+        toast({ title: "Offline: Queued", description: "Break will sync once you are online.", variant: "warning" });
+        return;
+      }
+
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "start", sessionId: session.id }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -31,11 +41,21 @@ export function BreakControls({ status, session, activeBreak, onRefresh }) {
 
   async function handleEndBreak() {
     setLoading(true);
+    const url = "/api/break";
+    const body = { action: "end", breakId: activeBreak.id };
+
     try {
-      const res = await fetch("/api/break", {
+      if (!navigator.onLine) {
+        const { queueAction } = await import("../lib/offline-db.js");
+        await queueAction({ url, body });
+        toast({ title: "Offline: Queued", description: "Break end will sync once you are online.", variant: "warning" });
+        return;
+      }
+
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "end", breakId: activeBreak.id }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);

@@ -7,6 +7,9 @@ import { BreakControls } from "../components/BreakControls.jsx";
 import { DailySummary } from "../components/DailySummary.jsx";
 import { SessionHistory } from "../components/SessionHistory.jsx";
 import { AuthForm } from "../components/AuthForm.jsx";
+import { SettingsModal } from "../components/SettingsModal.jsx";
+import { UserNav } from "../components/UserNav.jsx";
+import { SyncManager } from "../components/SyncManager.jsx";
 import { calcSessionDurationMs, calcTotalBreakMs } from "../lib/utils.js";
 import { Clock } from "lucide-react";
 
@@ -131,7 +134,7 @@ export default function HomePage() {
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
           <div className="relative">
-            <Clock className="h-10 w-10 text-emerald-400 animate-pulse" />
+            <Clock className="h-10 w-10 text-primary animate-pulse" />
           </div>
           <p className="text-sm text-muted-foreground font-medium">Loading...</p>
         </div>
@@ -169,26 +172,27 @@ export default function HomePage() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-10 border-b border-border/40 bg-background/80 backdrop-blur-md">
-        <div className="max-w-lg mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-emerald-500/20 flex items-center justify-center">
-              <Clock className="h-4 w-4 text-emerald-400" />
-            </div>
-            <span className="font-display font-bold text-base tracking-tight">TimeTrack</span>
-          </div>
+        <div className="max-w-lg mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground font-mono">
-              {new Date().toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}
-            </span>
-            <div className="text-xs text-muted-foreground font-medium">
-              {user.email}
+            <div className="w-8 h-8 rounded-xl bg-primary/20 flex items-center justify-center shadow-inner">
+              <Clock className="h-4.5 w-4.5 text-primary" />
             </div>
-            <button
-              className="text-xs text-destructive underline"
-              onClick={handleLogout}
-            >
-              Logout
-            </button>
+            <span className="font-display font-bold text-lg tracking-tight">TimeTrack</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="flex flex-col items-end mr-1">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                {new Date().toLocaleDateString([], { weekday: "short" })}
+              </span>
+              <span className="text-[10px] font-medium text-muted-foreground leading-none">
+                {new Date().toLocaleDateString([], { day: "numeric", month: "short" })}
+              </span>
+            </div>
+            
+            <SettingsModal />
+            <div className="w-px h-4 bg-border/50 mx-1" />
+            <UserNav user={user} onLogout={handleLogout} onUpdate={setUser} />
           </div>
         </div>
       </header>
@@ -203,6 +207,8 @@ export default function HomePage() {
           breaks={breaks}
           elapsed={elapsed}
         />
+
+        <SyncManager onSyncComplete={refresh} />
 
         {/* Daily summary */}
         <DailySummary todaySessions={todaySessions} />

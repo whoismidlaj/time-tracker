@@ -20,14 +20,14 @@ export function StatusCard({ status, session, activeBreak, breaks = [], elapsed 
   const config = statusConfig[status] || statusConfig.off;
 
   return (
-    <div className={`relative overflow-hidden rounded-2xl p-5 ${
-      isWorking ? "bg-gradient-to-br from-emerald-950 to-emerald-900 border border-emerald-800/50" :
-      isBreak ? "bg-gradient-to-br from-amber-950 to-amber-900 border border-amber-800/50" :
-      "bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-700/50"
+    <div className={`relative overflow-hidden rounded-2xl p-5 border transition-all duration-300 shadow-sm ${
+      isWorking ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-800/50" :
+      isBreak ? "bg-amber-50 border-amber-200 dark:bg-amber-950/40 dark:border-amber-800/50" :
+      "bg-card border-border/50 shadow-inner"
     }`}>
       {/* Ambient glow */}
-      <div className={`absolute -top-8 -right-8 w-32 h-32 rounded-full blur-3xl opacity-20 ${
-        isWorking ? "bg-emerald-400" : isBreak ? "bg-amber-400" : "bg-slate-400"
+      <div className={`absolute -top-8 -right-8 w-32 h-32 rounded-full blur-3xl opacity-20 transition-opacity duration-500 ${
+        isWorking ? "bg-emerald-400" : isBreak ? "bg-amber-400" : "bg-slate-400/20"
       }`} />
 
       <div className="relative">
@@ -42,37 +42,39 @@ export function StatusCard({ status, session, activeBreak, breaks = [], elapsed 
               )}
               <span className={`relative inline-flex rounded-full h-3 w-3 ${config.dot}`} />
             </div>
-            <Badge variant={config.variant} className="text-xs font-bold tracking-wide uppercase">
+            <Badge variant={config.variant} className="text-[10px] font-bold tracking-wider uppercase">
               {config.label}
             </Badge>
           </div>
           {session && (
-            <span className="text-xs text-white/40 font-mono">
-              #{String(session.id).padStart(4, "0")}
+            <span className="text-[10px] text-muted-foreground/60 font-mono font-medium">
+              ID: {String(session.id).padStart(4, "0")}
             </span>
           )}
         </div>
 
         {/* Main timer */}
         <div className="mb-1">
-          <div className="font-mono text-5xl font-bold text-white tracking-tight tabular-nums leading-none">
+          <div className={`font-mono text-5xl font-bold tracking-tight tabular-nums leading-none ${
+            isOff ? "text-muted-foreground/30" : "text-foreground"
+          }`}>
             {isOff ? (
-              <span className="text-slate-500">--:--:--</span>
+              <span>--:--:--</span>
             ) : (
               formatDuration(elapsed)
             )}
           </div>
-          <p className="text-xs text-white/40 mt-2 font-medium uppercase tracking-widest">
-            {isOff ? "Not clocked in" : isBreak ? "Net work time" : "Session time"}
+          <p className="text-[10px] text-muted-foreground font-semibold mt-3 uppercase tracking-[0.15em] leading-none">
+            {isOff ? "Status: Inactive" : isBreak ? "Session Net Work Time" : "Active Session Time"}
           </p>
         </div>
 
         {/* Break sub-timer */}
         {isBreak && (
-          <div className="mt-4 pt-4 border-t border-white/10">
+          <div className="mt-5 pt-4 border-t border-border/40">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-amber-300/60 uppercase tracking-widest font-medium">Break duration</span>
-              <span className="font-mono text-lg font-bold text-amber-300">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Current Break</span>
+              <span className="font-mono text-lg font-bold text-amber-500 dark:text-amber-400">
                 {formatDuration(breakMs)}
               </span>
             </div>
@@ -80,13 +82,13 @@ export function StatusCard({ status, session, activeBreak, breaks = [], elapsed 
         )}
 
         {/* Today's breaks summary */}
-        {!isOff && breaks.length > 0 && (
-          <div className="mt-3 flex items-center justify-between">
-            <span className="text-xs text-white/30 uppercase tracking-widest font-medium">
-              Breaks today
+        {!isOff && (
+          <div className="mt-4 flex items-center justify-between pt-3 border-t border-border/20">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
+              Breaks logged
             </span>
-            <span className="text-xs text-white/60 font-mono font-semibold">
-              {breaks.filter(b => b.break_end).length} · {formatShortDuration(calcTotalBreakMs(breaks.filter(b => b.break_end)))}
+            <span className="text-[10px] text-foreground/70 font-mono font-bold">
+              {breaks.filter(b => b.break_end).length} pts · {formatShortDuration(calcTotalBreakMs(breaks.filter(b => b.break_end)))}
             </span>
           </div>
         )}
