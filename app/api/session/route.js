@@ -1,13 +1,10 @@
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth.js";
 import { punchIn, punchOut, createManualSession } from '@/db/queries.js';
+import { getUserIdFromRequest } from "@/lib/api-utils.js";
 
 export async function POST(request) {
   try {
-    const sessionData = await getServerSession(authOptions);
-    if (!sessionData?.user?.id) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const userId = Number(sessionData.user.id);
+    const userId = await getUserIdFromRequest(request);
+    if (!userId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { action, sessionId } = await request.json();
     if (action === 'punch_in') {
