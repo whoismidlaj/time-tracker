@@ -177,6 +177,7 @@ export default function HomePage() {
         <DailySummary
           todaySessions={todaySessions}
           activeSession={session}
+          activeSessionBreaks={breaks}
           activeBreak={activeBreak}
           activeElapsed={elapsed}
         />

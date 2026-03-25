@@ -5,7 +5,7 @@ import { formatShortDuration, calcTotalBreakMs, calcSessionDurationMs, calcGross
 import { getTimezone } from "../lib/config.js";
 import { Clock, Coffee, TrendingUp } from "lucide-react";
 
-export function DailySummary({ todaySessions = [], activeSession = null, activeBreak = null, activeElapsed = 0 }) {
+export function DailySummary({ todaySessions = [], activeSession = null, activeSessionBreaks = [], activeBreak = null, activeElapsed = 0 }) {
   const stats = useMemo(() => {
     let totalWorked = 0;
     let totalBreak = 0;
@@ -31,7 +31,7 @@ export function DailySummary({ todaySessions = [], activeSession = null, activeB
       : null;
 
     if (activeSession && startedTodayStr === todayStr) {
-      const currentBreaks = activeSession.breaks || [];
+      const currentBreaks = activeSessionBreaks || [];
       const allBreaks = activeBreak ? [...currentBreaks, activeBreak] : currentBreaks;
       
       totalWorked += activeElapsed;
