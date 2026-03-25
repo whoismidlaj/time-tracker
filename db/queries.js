@@ -285,12 +285,12 @@ export async function getRecentSessions(userId, limit = 30) {
   return res.rows;
 }
 
-export async function getTodaySessions(userId) {
+export async function getTodaySessions(userId, dateStr) {
   const db = await getDb();
-  const today = new Date().toISOString().split('T')[0];
+  const date = dateStr || new Date().toISOString().split('T')[0];
   const res = await db.query(
     'SELECT * FROM sessions WHERE user_id = $1 AND CAST(punch_in_time AS DATE) = $2 ORDER BY punch_in_time ASC',
-    [userId, today]
+    [userId, date]
   );
   return res.rows;
 }

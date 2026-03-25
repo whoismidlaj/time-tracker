@@ -4,6 +4,8 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { X, Calendar, Clock, Loader2, Save, Trash2, Coffee } from "lucide-react";
 import { Button } from "./ui/button.jsx";
 import { toast } from "../lib/use-toast.js";
+import { parseLocalToUTC } from "../lib/utils.js";
+import { getTimezone } from "../lib/config.js";
 
 export function EditSessionModal({ session: initialSession, open, onOpenChange, onRefresh }) {
   const [punchIn, setPunchIn] = useState("");
@@ -16,13 +18,37 @@ export function EditSessionModal({ session: initialSession, open, onOpenChange, 
   const isEdit = !!initialSession;
 
   useEffect(() => {
+    const tz = getTimezone();
+    const options = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz };
+    
+    const formatTZ = (date) => {
+      if (!date) return "";
+      try {
+        const d = new Date(date);
+        const parts = new Intl.DateTimeFormat('en-CA', options).formatToParts(d);
+        const y = parts.find(p => p.type === 'year').value;
+        const m = parts.find(p => p.type === 'month').value;
+        const d_day = parts.find(p => p.type === 'day').value;
+        const h = parts.find(p => p.type === 'hour').value;
+        const min = parts.find(p => p.type === 'minute').value;
+        return `${y}-${m}-${d_day}T${h}:${min}`;
+      } catch (e) {
+        return "";
+      }
+    };
+
     if (initialSession) {
-      setPunchIn(initialSession.punch_in_time ? initialSession.punch_in_time.slice(0, 16) : "");
-      setPunchOut(initialSession.punch_out_time ? initialSession.punch_out_time.slice(0, 16) : "");
+      setPunchIn(formatTZ(initialSession.punch_in_time));
+      setPunchOut(formatTZ(initialSession.punch_out_time));
       setNotes(initialSession.notes || "");
-      setBreaks(initialSession.breaks || []);
+      setBreaks((initialSession.breaks || []).map(b => ({
+        ...b,
+        break_start: formatTZ(b.break_start),
+        break_end: formatTZ(b.break_end)
+      })));
     } else {
-      setPunchIn(new Date().toISOString().slice(0, 16));
+      const now = new Date();
+      setPunchIn(formatTZ(now));
       setPunchOut("");
       setNotes("");
       setBreaks([]);
@@ -33,15 +59,22 @@ export function EditSessionModal({ session: initialSession, open, onOpenChange, 
     e.preventDefault();
     setLoading(true);
     try {
+      const tz = getTimezone();
+      const formatToUTC = (val) => {
+        if (!val) return null;
+        const [d, t] = val.split("T");
+        return parseLocalToUTC(d, t, tz);
+      };
+
       const url = isEdit ? `/api/session/${initialSession.id}` : "/api/session";
       const method = isEdit ? "PATCH" : "POST";
       const body = {
-        punch_in_time: new Date(punchIn).toISOString(),
-        punch_out_time: punchOut ? new Date(punchOut).toISOString() : null,
+        punch_in_time: formatToUTC(punchIn),
+        punch_out_time: formatToUTC(punchOut),
         notes,
         breaks: breaks.map(b => ({
-          break_start: new Date(b.break_start).toISOString(),
-          break_end: b.break_end ? new Date(b.break_end).toISOString() : null
+          break_start: formatToUTC(b.break_start),
+          break_end: formatToUTC(b.break_end)
         }))
       };
 
@@ -150,7 +183,18 @@ export function EditSessionModal({ session: initialSession, open, onOpenChange, 
                     variant="outline" 
                     size="sm" 
                     className="h-6 text-[9px] px-2 rounded-lg"
-                    onClick={() => setBreaks([...breaks, { break_start: new Date().toISOString(), break_end: null }])}
+                    onClick={() => {
+                      const tz = getTimezone();
+                      const options = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz };
+                      const parts = new Intl.DateTimeFormat('en-CA', options).formatToParts(new Date());
+                      const y = parts.find(p => p.type === 'year').value;
+                      const m = parts.find(p => p.type === 'month').value;
+                      const d = parts.find(p => p.type === 'day').value;
+                      const h = parts.find(p => p.type === 'hour').value;
+                      const min = parts.find(p => p.type === 'minute').value;
+                      const nowTZ = `${y}-${m}-${d}T${h}:${min}`;
+                      setBreaks([...breaks, { break_start: nowTZ, break_end: null }]);
+                    }}
                   >
                     Add Break
                   </Button>

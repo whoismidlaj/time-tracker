@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Badge } from "./ui/badge.jsx";
-import { formatDuration, formatShortDuration, formatTime, calcTotalBreakMs, calcSessionDurationMs } from "../lib/utils.js";
+import { formatDuration, formatShortDuration, formatTime, calcTotalBreakMs, calcSessionDurationMs, parseLocalToUTC } from "../lib/utils.js";
+import { getTimezone } from "../lib/config.js";
 import { MessageSquare, Save, Loader2, Pencil, Check, X } from "lucide-react";
 
 export function StatusCard({ status, session, activeBreak, breaks = [], elapsed, onRefresh }) {
@@ -15,10 +16,15 @@ export function StatusCard({ status, session, activeBreak, breaks = [], elapsed,
 
   useEffect(() => {
     if (session?.punch_in_time) {
-      const date = new Date(session.punch_in_time);
-      const hours = String(date.getHours()).padStart(2, "0");
-      const minutes = String(date.getMinutes()).padStart(2, "0");
-      setTempStartTime(`${hours}:${minutes}`);
+      const tz = getTimezone();
+      const options = { 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        hour12: false, 
+        timeZone: tz 
+      };
+      const timeStr = new Date(session.punch_in_time).toLocaleTimeString('en-US', options);
+      setTempStartTime(timeStr);
     }
   }, [session?.punch_in_time, isEditingStart]);
 
@@ -50,16 +56,16 @@ export function StatusCard({ status, session, activeBreak, breaks = [], elapsed,
 
   async function handleSaveStartTime() {
     if (!session || !tempStartTime) return;
-    const [hours, minutes] = tempStartTime.split(":");
-    const newDate = new Date(session.punch_in_time);
-    newDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-    
     setSaving(true);
     try {
+      const tz = getTimezone();
+      const dateStr = new Date(session.punch_in_time).toLocaleDateString('en-CA', { timeZone: tz });
+      const newUTC = parseLocalToUTC(dateStr, tempStartTime, tz);
+      
       const res = await fetch(`/api/session/${session.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ punch_in_time: newDate.toISOString() }),
+        body: JSON.stringify({ punch_in_time: newUTC }),
       });
       if (!res.ok) throw new Error("Failed to update start time");
       setIsEditingStart(false);

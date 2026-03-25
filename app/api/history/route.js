@@ -12,9 +12,10 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') || 'recent';
     const limit = Number(searchParams.get('limit')) || (type === 'today' ? 30 : 30);
+    const date = searchParams.get('date');
 
     const sessions = type === 'today'
-      ? await getTodaySessions(Number(userId))
+      ? await getTodaySessions(Number(userId), date)
       : await getRecentSessions(Number(userId), limit);
 
     const sessionsWithBreaks = await Promise.all(sessions.map(async (session) => ({

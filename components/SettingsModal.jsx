@@ -1,9 +1,32 @@
-"use client";
+import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { X, Settings, Sparkles } from "lucide-react";
+import { X, Settings, Sparkles, Globe } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle.jsx";
+import { getTimezone, DEFAULT_TIMEZONE } from "../lib/config.js";
 
 export function SettingsModal() {
+  const [tz, setTz] = useState(getTimezone());
+
+  const handleTzChange = (newTz) => {
+    setTz(newTz);
+    localStorage.setItem("app_timezone", newTz);
+  };
+
+  const handleDone = () => {
+    // Reload to apply timezone changes site-wide
+    if (tz !== getTimezone()) {
+      window.location.reload();
+    }
+  };
+
+  const timezones = [
+    { label: "India (Kolkata)", value: "Asia/Kolkata" },
+    { label: "UTC", value: "UTC" },
+    { label: "Dubai", value: "Asia/Dubai" },
+    { label: "London", value: "Europe/London" },
+    { label: "New York", value: "America/New_York" },
+    { label: "Singapore", value: "Asia/Singapore" },
+  ];
   return (
     <Dialog.Root>
       <Dialog.Trigger asChild>
@@ -34,9 +57,29 @@ export function SettingsModal() {
               </div>
               <ThemeToggle />
             </div>
+
+            <div className="space-y-2 p-3 rounded-xl border border-border/50 bg-muted/30">
+              <div className="flex items-center gap-2 mb-1">
+                <Globe className="h-3 w-3 text-muted-foreground" />
+                <p className="text-[11px] font-bold text-foreground lowercase tracking-tight">App Timezone</p>
+              </div>
+              <select 
+                value={tz}
+                onChange={(e) => handleTzChange(e.target.value)}
+                className="w-full h-8 bg-background/50 border border-border/40 rounded-lg px-2 text-[10px] font-medium focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+              >
+                {timezones.map(t => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+              </select>
+              <p className="text-[9px] text-muted-foreground/60 px-1 font-medium">Selected: {tz}</p>
+            </div>
             
             <Dialog.Close asChild>
-              <button className="w-full py-2 text-[11px] font-bold bg-primary text-white rounded-lg shadow-lg shadow-primary/20 hover:opacity-90 active:scale-[0.98] transition-all">
+              <button 
+                onClick={handleDone}
+                className="w-full py-2.5 text-[11px] font-bold bg-primary text-white rounded-lg shadow-lg shadow-primary/20 hover:opacity-90 active:scale-[0.98] transition-all"
+              >
                 Done
               </button>
             </Dialog.Close>

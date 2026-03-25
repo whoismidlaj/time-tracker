@@ -22,18 +22,18 @@ async function ensureSchema() {
       CREATE TABLE IF NOT EXISTS sessions (
         id SERIAL PRIMARY KEY,
         user_id INTEGER,
-        punch_in_time TIMESTAMP NOT NULL,
-        punch_out_time TIMESTAMP,
+        punch_in_time TIMESTAMPTZ NOT NULL,
+        punch_out_time TIMESTAMPTZ,
         notes TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       );
 
       CREATE TABLE IF NOT EXISTS breaks (
         id SERIAL PRIMARY KEY,
         session_id INTEGER NOT NULL,
-        break_start TIMESTAMP NOT NULL,
-        break_end TIMESTAMP,
+        break_start TIMESTAMPTZ NOT NULL,
+        break_end TIMESTAMPTZ,
         CONSTRAINT fk_session FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
       );
     `);

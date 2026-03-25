@@ -2,6 +2,7 @@
 import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.jsx";
 import { formatShortDuration, calcTotalBreakMs, calcSessionDurationMs, calcGrossSessionDurationMs } from "../lib/utils.js";
+import { getTimezone } from "../lib/config.js";
 import { Clock, Coffee, TrendingUp } from "lucide-react";
 
 export function DailySummary({ todaySessions = [], activeSession = null, activeBreak = null, activeElapsed = 0 }) {
@@ -23,10 +24,13 @@ export function DailySummary({ todaySessions = [], activeSession = null, activeB
     }
 
     // Add active session if it exists and started today
-    const isStartedToday = activeSession?.punch_in_time && 
-      new Date(activeSession.punch_in_time).toDateString() === new Date().toDateString();
+    const tz = getTimezone();
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+    const startedTodayStr = activeSession?.punch_in_time 
+      ? new Date(activeSession.punch_in_time).toLocaleDateString('en-CA', { timeZone: tz })
+      : null;
 
-    if (activeSession && isStartedToday) {
+    if (activeSession && startedTodayStr === todayStr) {
       const currentBreaks = activeSession.breaks || [];
       const allBreaks = activeBreak ? [...currentBreaks, activeBreak] : currentBreaks;
       

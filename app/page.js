@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { StatusCard } from "../components/StatusCard.jsx";
+import { getTimezone } from "../lib/config.js";
 import { PunchControls } from "../components/PunchControls.jsx";
 import { BreakControls } from "../components/BreakControls.jsx";
 import { DailySummary } from "../components/DailySummary.jsx";
@@ -60,8 +61,9 @@ export default function HomePage() {
       return;
     }
     try {
+      const localDate = new Date().toLocaleDateString('en-CA', { timeZone: getTimezone() });
       const [todayRes, allRes] = await Promise.all([
-        fetch('/api/history?type=today'),
+        fetch(`/api/history?type=today&date=${localDate}`),
         fetch('/api/history?type=recent&limit=5'),
       ]);
       const todayData = await todayRes.json();
