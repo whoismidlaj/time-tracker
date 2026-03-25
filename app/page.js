@@ -158,7 +158,7 @@ export default function HomePage() {
       </header>
 
       {/* Main content */}
-      <main className="max-w-lg mx-auto px-4 py-4 space-y-4 pb-24">
+      <main className="max-w-lg mx-auto px-4 py-4 space-y-4 pb-32">
         {/* Status card */}
         <StatusCard
           status={status}
@@ -172,7 +172,11 @@ export default function HomePage() {
         <SyncManager onSyncComplete={refresh} />
 
         {/* Daily summary */}
-        <DailySummary todaySessions={todaySessions} />
+        <DailySummary
+          todaySessions={todaySessions}
+          activeSession={session}
+          activeElapsed={elapsed}
+        />
 
         {/* Session history */}
         <div className="flex items-center justify-between">

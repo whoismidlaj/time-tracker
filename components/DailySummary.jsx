@@ -4,12 +4,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.jsx";
 import { formatShortDuration, calcTotalBreakMs, calcSessionDurationMs } from "../lib/utils.js";
 import { Clock, Coffee, TrendingUp } from "lucide-react";
 
-export function DailySummary({ todaySessions = [] }) {
+export function DailySummary({ todaySessions = [], activeSession = null, activeElapsed = 0 }) {
   const stats = useMemo(() => {
     let totalWorked = 0;
     let totalBreak = 0;
 
-    for (const s of todaySessions) {
+    // Filter out active session from historical list to avoid double counting if it's already there
+    const historicalSessions = todaySessions.filter(s => s.id !== activeSession?.id);
+
+    for (const s of historicalSessions) {
       const breaks = s.breaks || [];
       totalBreak += calcTotalBreakMs(breaks.filter(b => b.break_end));
       if (s.punch_out_time) {
@@ -17,8 +20,17 @@ export function DailySummary({ todaySessions = [] }) {
       }
     }
 
+    // Add active session if it exists and started today
+    const isStartedToday = activeSession?.punch_in_time && 
+      new Date(activeSession.punch_in_time).toDateString() === new Date().toDateString();
+
+    if (activeSession && isStartedToday) {
+      totalWorked += activeElapsed;
+      totalBreak += calcTotalBreakMs((activeSession.breaks || []).filter(b => b.break_end));
+    }
+
     return { totalWorked, totalBreak, net: totalWorked };
-  }, [todaySessions]);
+  }, [todaySessions, activeSession, activeElapsed]);
 
   const items = [
     {

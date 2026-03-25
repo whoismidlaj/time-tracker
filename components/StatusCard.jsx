@@ -1,15 +1,26 @@
 import { useState, useEffect } from "react";
 import { Badge } from "./ui/badge.jsx";
-import { formatDuration, formatShortDuration, calcTotalBreakMs, calcSessionDurationMs } from "../lib/utils.js";
-import { MessageSquare, Save, Loader2 } from "lucide-react";
+import { formatDuration, formatShortDuration, formatTime, calcTotalBreakMs, calcSessionDurationMs } from "../lib/utils.js";
+import { MessageSquare, Save, Loader2, Pencil, Check, X } from "lucide-react";
 
 export function StatusCard({ status, session, activeBreak, breaks = [], elapsed, onRefresh }) {
   const [notes, setNotes] = useState(session?.notes || "");
   const [saving, setSaving] = useState(false);
+  const [isEditingStart, setIsEditingStart] = useState(false);
+  const [tempStartTime, setTempStartTime] = useState("");
 
   useEffect(() => {
     setNotes(session?.notes || "");
   }, [session?.id, session?.notes]);
+
+  useEffect(() => {
+    if (session?.punch_in_time) {
+      const date = new Date(session.punch_in_time);
+      const hours = String(date.getHours()).padStart(2, "0");
+      const minutes = String(date.getMinutes()).padStart(2, "0");
+      setTempStartTime(`${hours}:${minutes}`);
+    }
+  }, [session?.punch_in_time, isEditingStart]);
 
   const isWorking = status === "working";
   const isBreak = status === "break";
@@ -29,6 +40,29 @@ export function StatusCard({ status, session, activeBreak, breaks = [], elapsed,
         body: JSON.stringify({ notes }),
       });
       if (!res.ok) throw new Error("Failed to save notes");
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSaveStartTime() {
+    if (!session || !tempStartTime) return;
+    const [hours, minutes] = tempStartTime.split(":");
+    const newDate = new Date(session.punch_in_time);
+    newDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+    
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/session/${session.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ punch_in_time: newDate.toISOString() }),
+      });
+      if (!res.ok) throw new Error("Failed to update start time");
+      setIsEditingStart(false);
       if (onRefresh) onRefresh();
     } catch (err) {
       console.error(err);
@@ -71,10 +105,44 @@ export function StatusCard({ status, session, activeBreak, breaks = [], elapsed,
               {config.label}
             </Badge>
           </div>
-          {session && (
-            <span className="text-[10px] text-muted-foreground/60 font-mono font-medium">
-              ID: {String(session.id).padStart(4, "0")}
-            </span>
+          {session && !isOff && (
+            <div className="flex items-center gap-1.5 ml-auto">
+              {isEditingStart ? (
+                <div className="flex items-center gap-1 bg-background/50 border border-border/40 rounded-lg px-1.5 py-0.5 animate-in fade-in zoom-in-95 duration-200">
+                  <input
+                    type="time"
+                    value={tempStartTime}
+                    onChange={(e) => setTempStartTime(e.target.value)}
+                    className="bg-transparent border-none outline-none text-[10px] font-mono font-bold w-16"
+                  />
+                  <button 
+                    onClick={handleSaveStartTime}
+                    className="p-0.5 hover:text-emerald-500 transition-colors"
+                    title="Save"
+                  >
+                    <Check className="h-3 w-3" />
+                  </button>
+                  <button 
+                    onClick={() => setIsEditingStart(false)}
+                    className="p-0.5 hover:text-destructive transition-colors"
+                    title="Cancel"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60 font-medium">
+                  <span className="font-mono">In: {formatTime(session.punch_in_time)}</span>
+                  <button 
+                    onClick={() => setIsEditingStart(true)}
+                    className="p-1 hover:text-primary transition-colors hover:bg-primary/5 rounded-md"
+                    title="Edit start time"
+                  >
+                    <Pencil className="h-2.5 w-2.5" />
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -129,7 +197,7 @@ export function StatusCard({ status, session, activeBreak, breaks = [], elapsed,
               Breaks logged
             </span>
             <span className="text-[10px] text-foreground/70 font-mono font-bold">
-              {breaks.filter(b => b.break_end).length} pts · {formatShortDuration(calcTotalBreakMs(breaks.filter(b => b.break_end)))}
+              {breaks.filter(b => b.break_end).length} · {formatShortDuration(calcTotalBreakMs(breaks.filter(b => b.break_end)))}
             </span>
           </div>
         )}
