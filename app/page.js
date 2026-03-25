@@ -158,7 +158,7 @@ export default function HomePage() {
       </header>
 
       {/* Main content */}
-      <main className="max-w-lg mx-auto px-4 py-4 space-y-4 pb-32">
+      <main className="max-w-lg mx-auto px-4 py-4 space-y-4 pb-44">
         {/* Status card */}
         <StatusCard
           status={status}
