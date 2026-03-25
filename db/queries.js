@@ -173,10 +173,41 @@ export async function updateSession(sessionId, userId, data) {
   if (data.punch_out_time !== undefined) { fields.push(`punch_out_time = $${paramIdx++}`); params.push(data.punch_out_time); }
   if (data.notes !== undefined) { fields.push(`notes = $${paramIdx++}`); params.push(data.notes); }
 
-  if (fields.length === 0) return session;
-  params.push(sessionId);
-  await db.query(`UPDATE sessions SET ${fields.join(', ')} WHERE id = $${paramIdx}`, params);
+  if (fields.length > 0) {
+    params.push(sessionId);
+    await db.query(`UPDATE sessions SET ${fields.join(', ')} WHERE id = $${paramIdx}`, params);
+  }
+
+  if (data.breaks) {
+    await syncSessionBreaks(sessionId, userId, data.breaks);
+  }
+
   return getSessionById(sessionId);
+}
+
+export async function syncSessionBreaks(sessionId, userId, breaks) {
+  const session = await getSessionById(sessionId);
+  if (!session || session.user_id !== userId) throw new Error('Session not found');
+
+  const pool = await getDb();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM breaks WHERE session_id = $1', [sessionId]);
+    for (const b of breaks) {
+      if (!b.break_start) continue;
+      await client.query(
+        'INSERT INTO breaks (session_id, break_start, break_end) VALUES ($1, $2, $3)',
+        [sessionId, b.break_start, b.break_end]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export async function deleteSession(sessionId, userId) {

@@ -90,8 +90,8 @@ export default function HomePage() {
     if (timerRef.current) clearInterval(timerRef.current);
     if (session && (status === "working" || status === "break")) {
       const update = () => {
-        const finishedBreaks = breaks.filter(b => b.break_end);
-        setElapsed(calcSessionDurationMs(session, finishedBreaks));
+        const allBreaks = activeBreak ? [...breaks, activeBreak] : breaks;
+        setElapsed(calcSessionDurationMs(session, allBreaks));
       };
       update();
       timerRef.current = setInterval(update, 1000);
@@ -99,7 +99,7 @@ export default function HomePage() {
       setElapsed(0);
     }
     return () => clearInterval(timerRef.current);
-  }, [session, status, breaks]);
+  }, [session, status, breaks, activeBreak]);
 
   if (loading) {
     return (
@@ -175,6 +175,7 @@ export default function HomePage() {
         <DailySummary
           todaySessions={todaySessions}
           activeSession={session}
+          activeBreak={activeBreak}
           activeElapsed={elapsed}
         />
 

@@ -1,15 +1,16 @@
 "use client";
 import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.jsx";
-import { formatShortDuration, calcTotalBreakMs, calcSessionDurationMs } from "../lib/utils.js";
+import { formatShortDuration, calcTotalBreakMs, calcSessionDurationMs, calcGrossSessionDurationMs } from "../lib/utils.js";
 import { Clock, Coffee, TrendingUp } from "lucide-react";
 
-export function DailySummary({ todaySessions = [], activeSession = null, activeElapsed = 0 }) {
+export function DailySummary({ todaySessions = [], activeSession = null, activeBreak = null, activeElapsed = 0 }) {
   const stats = useMemo(() => {
     let totalWorked = 0;
     let totalBreak = 0;
+    let totalGross = 0;
 
-    // Filter out active session from historical list to avoid double counting if it's already there
+    // Filter out active session from historical list to avoid double counting
     const historicalSessions = todaySessions.filter(s => s.id !== activeSession?.id);
 
     for (const s of historicalSessions) {
@@ -17,6 +18,7 @@ export function DailySummary({ todaySessions = [], activeSession = null, activeE
       totalBreak += calcTotalBreakMs(breaks.filter(b => b.break_end));
       if (s.punch_out_time) {
         totalWorked += calcSessionDurationMs(s, breaks);
+        totalGross += calcGrossSessionDurationMs(s);
       }
     }
 
@@ -25,12 +27,16 @@ export function DailySummary({ todaySessions = [], activeSession = null, activeE
       new Date(activeSession.punch_in_time).toDateString() === new Date().toDateString();
 
     if (activeSession && isStartedToday) {
+      const currentBreaks = activeSession.breaks || [];
+      const allBreaks = activeBreak ? [...currentBreaks, activeBreak] : currentBreaks;
+      
       totalWorked += activeElapsed;
-      totalBreak += calcTotalBreakMs((activeSession.breaks || []).filter(b => b.break_end));
+      totalBreak += calcTotalBreakMs(allBreaks);
+      totalGross += calcGrossSessionDurationMs(activeSession);
     }
 
-    return { totalWorked, totalBreak, net: totalWorked };
-  }, [todaySessions, activeSession, activeElapsed]);
+    return { totalWorked, totalBreak, net: totalGross };
+  }, [todaySessions, activeSession, activeBreak, activeElapsed]);
 
   const items = [
     {
