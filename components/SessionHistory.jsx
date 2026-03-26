@@ -2,18 +2,21 @@ import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.jsx";
 import { Badge } from "./ui/badge.jsx";
 import { formatTime, formatDate, formatShortDuration, calcSessionDurationMs, calcTotalBreakMs } from "../lib/utils.js";
-import { Clock, Coffee, Edit2, Plus, PenSquare, Calendar } from "lucide-react";
+import { Clock, Coffee, Edit2, Plus, PenSquare, Calendar, ChevronRight } from "lucide-react";
 import { EditSessionModal } from "./EditSessionModal.jsx";
+import { SessionDetailModal } from "./SessionDetailModal.jsx";
 import { Button } from "./ui/button.jsx";
 
-function SessionRow({ session, isActive, onEdit }) {
+function SessionRow({ session, isActive, onEdit, onClick }) {
   const breaks = session.breaks || [];
   const finishedBreaks = breaks.filter(b => b.break_end);
-  const breakMs = calcTotalBreakMs(finishedBreaks);
-  const workedMs = session.punch_out_time ? calcSessionDurationMs(session, finishedBreaks) : null;
+  const breakMs = calcTotalBreakMs(breaks);
+  const workedMs = session.punch_out_time ? calcSessionDurationMs(session, breaks) : null;
 
   return (
-    <div className={`group rounded-xl p-3.5 transition-all ${
+    <div 
+      onClick={() => onClick(session)}
+      className={`group cursor-pointer rounded-xl p-3.5 transition-all ${
       isActive
         ? "bg-emerald-500/10 border border-emerald-500/20 shadow-sm"
         : "bg-muted/30 border border-transparent hover:border-border/60 hover:bg-muted/50"
@@ -78,6 +81,8 @@ function SessionRow({ session, isActive, onEdit }) {
           >
             <Edit2 className="h-3.5 w-3.5" />
           </button>
+          
+          <ChevronRight className="h-4 w-4 text-muted-foreground/20 group-hover:text-primary/40 transition-colors" />
         </div>
       </div>
     </div>
@@ -87,10 +92,17 @@ function SessionRow({ session, isActive, onEdit }) {
 export function SessionHistory({ sessions = [], activeSessionId, onRefresh }) {
   const [editingSession, setEditingSession] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [detailSession, setDetailSession] = useState(null);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   const handleEdit = (session) => {
     setEditingSession(session);
     setModalOpen(true);
+  };
+
+  const handleDetail = (session) => {
+    setDetailSession(session);
+    setDetailOpen(true);
   };
 
   const handleCreate = () => {
@@ -159,6 +171,7 @@ export function SessionHistory({ sessions = [], activeSessionId, onRefresh }) {
                       session={s}
                       isActive={s.id === activeSessionId}
                       onEdit={handleEdit}
+                      onClick={handleDetail}
                     />
                   ))}
                 </div>
@@ -173,6 +186,13 @@ export function SessionHistory({ sessions = [], activeSessionId, onRefresh }) {
         open={modalOpen}
         onOpenChange={setModalOpen}
         onRefresh={onRefresh}
+      />
+
+      <SessionDetailModal
+        session={detailSession}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        onEdit={handleEdit}
       />
     </Card>
   );

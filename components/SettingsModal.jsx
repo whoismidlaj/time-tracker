@@ -2,10 +2,13 @@ import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X, Settings, Sparkles, Globe } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle.jsx";
-import { getTimezone, DEFAULT_TIMEZONE } from "../lib/config.js";
+import { getTimezone, DEFAULT_TIMEZONE, getOfficeStartTime, getOfficeEndTime, getBreakHours } from "../lib/config.js";
 
 export function SettingsModal() {
   const [tz, setTz] = useState(getTimezone());
+  const [startTime, setStartTime] = useState(getOfficeStartTime());
+  const [endTime, setEndTime] = useState(getOfficeEndTime());
+  const [breakHours, setBreakHours] = useState(getBreakHours());
 
   const handleTzChange = (newTz) => {
     setTz(newTz);
@@ -13,10 +16,11 @@ export function SettingsModal() {
   };
 
   const handleDone = () => {
-    // Reload to apply timezone changes site-wide
-    if (tz !== getTimezone()) {
-      window.location.reload();
-    }
+    localStorage.setItem("app_start_time", startTime);
+    localStorage.setItem("app_end_time", endTime);
+    localStorage.setItem("app_break_hours", breakHours);
+    // Reload to apply changes site-wide
+    window.location.reload();
   };
 
   const timezones = [
@@ -73,6 +77,44 @@ export function SettingsModal() {
                 ))}
               </select>
               <p className="text-[9px] text-muted-foreground/60 px-1 font-medium">Selected: {tz}</p>
+            </div>
+
+            <div className="space-y-3 p-3 rounded-xl border border-border/50 bg-muted/30">
+              <p className="text-[11px] font-bold text-foreground lowercase tracking-tight">Working Rules</p>
+              
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-muted-foreground font-bold uppercase ml-1">Office Start</label>
+                    <input 
+                      type="time" 
+                      value={startTime}
+                      onChange={(e) => setStartTime(e.target.value)}
+                      className="w-full h-8 bg-background/50 border border-border/40 rounded-lg px-2 text-[10px] font-bold focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-muted-foreground font-bold uppercase ml-1">Office End</label>
+                    <input 
+                      type="time" 
+                      value={endTime}
+                      onChange={(e) => setEndTime(e.target.value)}
+                      className="w-full h-8 bg-background/50 border border-border/40 rounded-lg px-2 text-[10px] font-bold focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <label className="text-[10px] text-muted-foreground font-medium">Allowed Break (hrs)</label>
+                  <input 
+                    type="number" 
+                    step="0.5"
+                    value={breakHours}
+                    onChange={(e) => setBreakHours(e.target.value)}
+                    className="w-12 h-7 bg-background/50 border border-border/40 rounded-md px-1.5 text-[10px] font-bold text-right focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+                  />
+                </div>
+              </div>
             </div>
             
             <Dialog.Close asChild>

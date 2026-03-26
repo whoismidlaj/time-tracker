@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { Badge } from "./ui/badge.jsx";
-import { formatDuration, formatShortDuration, formatTime, calcTotalBreakMs, calcSessionDurationMs, parseLocalToUTC } from "../lib/utils.js";
-import { getTimezone } from "../lib/config.js";
-import { MessageSquare, Save, Loader2, Pencil, Check, X } from "lucide-react";
+import * as Dialog from "@radix-ui/react-dialog";
+import { formatDuration, formatShortDuration, formatTime, calcTotalBreakMs, calcSessionDurationMs, parseLocalToUTC, calcExitTime } from "../lib/utils.js";
+import { getTimezone, getOfficeStartTime, getOfficeEndTime, getBreakHours } from "../lib/config.js";
+import { MessageSquare, Save, Loader2, Pencil, Check, X, LogOut, Clock as ClockIcon } from "lucide-react";
 
 export function StatusCard({ status, session, activeBreak, breaks = [], elapsed, onRefresh }) {
   const [notes, setNotes] = useState(session?.notes || "");
@@ -85,6 +86,9 @@ export function StatusCard({ status, session, activeBreak, breaks = [], elapsed,
 
   const config = statusConfig[status] || statusConfig.off;
 
+  const totalBreakMs = calcTotalBreakMs(breaks) + breakMs;
+  const exitTime = session ? calcExitTime(session.punch_in_time, totalBreakMs) : null;
+
   return (
     <div className={`relative overflow-hidden rounded-2xl p-5 border transition-all duration-300 shadow-sm ${
       isWorking ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-800/50" :
@@ -113,41 +117,63 @@ export function StatusCard({ status, session, activeBreak, breaks = [], elapsed,
           </div>
           {session && !isOff && (
             <div className="flex items-center gap-1.5 ml-auto">
-              {isEditingStart ? (
-                <div className="flex items-center gap-1 bg-background/50 border border-border/40 rounded-lg px-1.5 py-0.5 animate-in fade-in zoom-in-95 duration-200">
-                  <input
-                    type="time"
-                    value={tempStartTime}
-                    onChange={(e) => setTempStartTime(e.target.value)}
-                    className="bg-transparent border-none outline-none text-[10px] font-mono font-bold w-16"
-                  />
-                  <button 
-                    onClick={handleSaveStartTime}
-                    className="p-0.5 hover:text-emerald-500 transition-colors"
-                    title="Save"
-                  >
-                    <Check className="h-3 w-3" />
-                  </button>
-                  <button 
-                    onClick={() => setIsEditingStart(false)}
-                    className="p-0.5 hover:text-destructive transition-colors"
-                    title="Cancel"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60 font-medium">
-                  <span className="font-mono">In: {formatTime(session.punch_in_time)}</span>
-                  <button 
-                    onClick={() => setIsEditingStart(true)}
-                    className="p-1 hover:text-primary transition-colors hover:bg-primary/5 rounded-md"
-                    title="Edit start time"
-                  >
-                    <Pencil className="h-2.5 w-2.5" />
-                  </button>
-                </div>
-              )}
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60 font-medium">
+                <span className="font-mono">In: {formatTime(session.punch_in_time)}</span>
+                
+                <Dialog.Root open={isEditingStart} onOpenChange={setIsEditingStart}>
+                  <Dialog.Trigger asChild>
+                    <button 
+                      className="p-1 hover:text-primary transition-colors hover:bg-primary/5 rounded-md"
+                      title="Edit start time"
+                    >
+                      <Pencil className="h-2.5 w-2.5" />
+                    </button>
+                  </Dialog.Trigger>
+                  <Dialog.Portal>
+                    <Dialog.Overlay className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-[2px] animate-in fade-in" />
+                    <Dialog.Content className="fixed left-[50%] top-[40%] z-[70] w-full max-w-[240px] translate-x-[-50%] translate-y-[-50%] rounded-2xl border border-border bg-background p-5 shadow-2xl animate-in zoom-in-95 duration-200">
+                      <div className="flex items-center justify-between mb-4">
+                        <Dialog.Title className="text-[11px] font-bold font-display uppercase tracking-wider flex items-center gap-2">
+                          <ClockIcon className="h-3.5 w-3.5 text-primary" /> Edit Start Time
+                        </Dialog.Title>
+                        <Dialog.Close asChild>
+                          <button className="rounded-full p-1 hover:bg-accent text-muted-foreground transition-colors">
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Dialog.Close>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest ml-1">Time</label>
+                          <input
+                            type="time"
+                            value={tempStartTime}
+                            onChange={(e) => setTempStartTime(e.target.value)}
+                            className="w-full h-10 rounded-xl border border-border/60 bg-muted/20 px-3 text-sm font-bold font-mono focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                          />
+                        </div>
+
+                        <div className="flex gap-2">
+                          <Dialog.Close asChild>
+                            <button className="flex-1 h-9 rounded-lg text-[10px] font-bold uppercase tracking-wider border border-border hover:bg-muted transition-colors">
+                              Cancel
+                            </button>
+                          </Dialog.Close>
+                          <button 
+                            onClick={handleSaveStartTime}
+                            disabled={saving}
+                            className="flex-1 h-9 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-primary text-white shadow-lg shadow-primary/20 flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all"
+                          >
+                            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    </Dialog.Content>
+                  </Dialog.Portal>
+                </Dialog.Root>
+              </div>
             </div>
           )}
         </div>
@@ -158,6 +184,8 @@ export function StatusCard({ status, session, activeBreak, breaks = [], elapsed,
           }`}>
             {isOff ? (
               <span>--:--:--</span>
+            ) : isBreak ? (
+              <span className="text-amber-500/80">{formatDuration(elapsed)}</span>
             ) : (
               formatDuration(elapsed)
             )}
@@ -198,13 +226,35 @@ export function StatusCard({ status, session, activeBreak, breaks = [], elapsed,
         )}
 
         {!isOff && (
-          <div className="mt-4 flex items-center justify-between pt-3 border-t border-border/20">
-            <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
-              Breaks logged
-            </span>
-            <span className="text-[10px] text-foreground/70 font-mono font-bold">
-              {breaks.filter(b => b.break_end).length} · {formatShortDuration(calcTotalBreakMs(breaks.filter(b => b.break_end)))}
-            </span>
+          <div className="mt-4 flex flex-col gap-3 pt-3 border-t border-border/20">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
+                Breaks logged
+              </span>
+              <span className="text-[10px] text-foreground/70 font-mono font-bold">
+                {breaks.filter(b => b.break_end).length} · {formatShortDuration(calcTotalBreakMs(breaks.filter(b => b.break_end)))}
+              </span>
+            </div>
+
+            {exitTime && (
+              <div className="flex items-center justify-between bg-primary/5 rounded-xl p-2.5 border border-primary/10 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <LogOut className="h-3.5 w-3.5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-bold leading-none mb-0.5">Estimated Exit</p>
+                    <p className="text-xs font-bold text-foreground font-mono">{formatTime(exitTime)}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                   <p className="text-[8px] text-muted-foreground font-medium mb-0.5">Total Stay</p>
+                   <p className="text-[10px] font-bold text-primary/80 font-mono">
+                    {getOfficeStartTime()} - {getOfficeEndTime()} Rule
+                   </p>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

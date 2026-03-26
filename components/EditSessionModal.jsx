@@ -41,11 +41,15 @@ export function EditSessionModal({ session: initialSession, open, onOpenChange, 
       setPunchIn(formatTZ(initialSession.punch_in_time));
       setPunchOut(formatTZ(initialSession.punch_out_time));
       setNotes(initialSession.notes || "");
-      setBreaks((initialSession.breaks || []).map(b => ({
-        ...b,
-        break_start: formatTZ(b.break_start),
-        break_end: formatTZ(b.break_end)
-      })));
+      setBreaks((initialSession.breaks || []).map(b => {
+        const start = b.break_start ? formatTZ(b.break_start) : "";
+        const end = b.break_end ? formatTZ(b.break_end) : "";
+        return {
+          ...b,
+          break_start: start.split("T")[1] || "",
+          break_end: end.split("T")[1] || ""
+        };
+      }));
     } else {
       const now = new Date();
       setPunchIn(formatTZ(now));
@@ -60,22 +64,62 @@ export function EditSessionModal({ session: initialSession, open, onOpenChange, 
     setLoading(true);
     try {
       const tz = getTimezone();
-      const formatToUTC = (val) => {
+      const formatToUTC = (val, dateRef = punchIn) => {
         if (!val) return null;
-        const [d, t] = val.split("T");
+        let d, t;
+        if (val.includes("T")) {
+          [d, t] = val.split("T");
+        } else {
+          [d] = dateRef.split("T");
+          t = val;
+        }
         return parseLocalToUTC(d, t, tz);
       };
+
+      const startUTC = formatToUTC(punchIn);
+      const endUTC = formatToUTC(punchOut);
+
+      // Validation
+      const startMs = new Date(startUTC).getTime();
+      const endMs = endUTC ? new Date(endUTC).getTime() : Infinity;
+
+      if (endUTC && startMs >= endMs) {
+        throw new Error("Punch out must be after punch in");
+      }
+
+      const processedBreaks = breaks.map(b => {
+        const bStartUTC = formatToUTC(b.break_start);
+        const bEndUTC = formatToUTC(b.break_end);
+        
+        if (bStartUTC) {
+          const bStartMs = new Date(bStartUTC).getTime();
+          if (bStartMs < startMs || bStartMs > endMs) {
+            throw new Error(`Break start (${b.break_start}) must be within session range`);
+          }
+        }
+        if (bEndUTC) {
+          const bEndMs = new Date(bEndUTC).getTime();
+          if (bEndMs < startMs || bEndMs > endMs) {
+            throw new Error(`Break end (${b.break_end}) must be within session range`);
+          }
+          if (bStartUTC && bStartMs > bEndMs) {
+             throw new Error(`Break end must be after break start`);
+          }
+        }
+
+        return {
+          break_start: bStartUTC,
+          break_end: bEndUTC
+        };
+      });
 
       const url = isEdit ? `/api/session/${initialSession.id}` : "/api/session";
       const method = isEdit ? "PATCH" : "POST";
       const body = {
-        punch_in_time: formatToUTC(punchIn),
-        punch_out_time: formatToUTC(punchOut),
+        punch_in_time: startUTC,
+        punch_out_time: endUTC,
         notes,
-        breaks: breaks.map(b => ({
-          break_start: formatToUTC(b.break_start),
-          break_end: formatToUTC(b.break_end)
-        }))
+        breaks: processedBreaks
       };
 
       if (!isEdit) {
@@ -184,16 +228,11 @@ export function EditSessionModal({ session: initialSession, open, onOpenChange, 
                     size="sm" 
                     className="h-6 text-[9px] px-2 rounded-lg"
                     onClick={() => {
-                      const tz = getTimezone();
-                      const options = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz };
-                      const parts = new Intl.DateTimeFormat('en-CA', options).formatToParts(new Date());
-                      const y = parts.find(p => p.type === 'year').value;
-                      const m = parts.find(p => p.type === 'month').value;
-                      const d = parts.find(p => p.type === 'day').value;
-                      const h = parts.find(p => p.type === 'hour').value;
-                      const min = parts.find(p => p.type === 'minute').value;
-                      const nowTZ = `${y}-${m}-${d}T${h}:${min}`;
-                      setBreaks([...breaks, { break_start: nowTZ, break_end: null }]);
+                      const now = new Date();
+                      const h = String(now.getHours()).padStart(2, '0');
+                      const m = String(now.getMinutes()).padStart(2, '0');
+                      const nowTime = `${h}:${m}`;
+                      setBreaks([...breaks, { break_start: nowTime, break_end: "" }]);
                     }}
                   >
                     Add Break
@@ -204,26 +243,32 @@ export function EditSessionModal({ session: initialSession, open, onOpenChange, 
                   {breaks.map((brk, idx) => (
                     <div key={idx} className="flex items-center gap-2 bg-muted/30 p-2 rounded-lg border border-border/40 group">
                       <div className="grid grid-cols-2 gap-2 flex-1">
-                        <input
-                          type="datetime-local"
-                          value={brk.break_start ? brk.break_start.slice(0, 16) : ""}
-                          onChange={(e) => {
-                            const newBreaks = [...breaks];
-                            newBreaks[idx].break_start = e.target.value;
-                            setBreaks(newBreaks);
-                          }}
-                          className="bg-transparent border-none text-[10px] font-medium outline-none"
-                        />
-                        <input
-                          type="datetime-local"
-                          value={brk.break_end ? brk.break_end.slice(0, 16) : ""}
-                          onChange={(e) => {
-                            const newBreaks = [...breaks];
-                            newBreaks[idx].break_end = e.target.value;
-                            setBreaks(newBreaks);
-                          }}
-                          className="bg-transparent border-none text-[10px] font-medium outline-none"
-                        />
+                        <div className="space-y-0.5">
+                           <p className="text-[8px] text-muted-foreground uppercase font-bold ml-1">Start</p>
+                           <input
+                            type="time"
+                            value={brk.break_start || ""}
+                            onChange={(e) => {
+                              const newBreaks = [...breaks];
+                              newBreaks[idx].break_start = e.target.value;
+                              setBreaks(newBreaks);
+                            }}
+                            className="bg-background border border-border/40 rounded px-1.5 py-0.5 text-[10px] font-bold outline-none w-full"
+                          />
+                        </div>
+                        <div className="space-y-0.5">
+                           <p className="text-[8px] text-muted-foreground uppercase font-bold ml-1">End</p>
+                           <input
+                            type="time"
+                            value={brk.break_end || ""}
+                            onChange={(e) => {
+                              const newBreaks = [...breaks];
+                              newBreaks[idx].break_end = e.target.value;
+                              setBreaks(newBreaks);
+                            }}
+                            className="bg-background border border-border/40 rounded px-1.5 py-0.5 text-[10px] font-bold outline-none w-full"
+                          />
+                        </div>
                       </div>
                       <button
                         type="button"
