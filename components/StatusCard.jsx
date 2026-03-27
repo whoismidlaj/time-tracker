@@ -86,7 +86,7 @@ export function StatusCard({ status, session, activeBreak, breaks = [], elapsed,
 
   const config = statusConfig[status] || statusConfig.off;
 
-  const totalBreakMs = calcTotalBreakMs(breaks) + breakMs;
+  const totalBreakMs = calcTotalBreakMs(breaks);
   const exitTime = session ? calcExitTime(session.punch_in_time, totalBreakMs) : null;
 
   return (

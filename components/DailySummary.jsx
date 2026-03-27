@@ -31,11 +31,8 @@ export function DailySummary({ todaySessions = [], activeSession = null, activeS
       : null;
 
     if (activeSession && startedTodayStr === todayStr) {
-      const currentBreaks = activeSessionBreaks || [];
-      const allBreaks = activeBreak ? [...currentBreaks, activeBreak] : currentBreaks;
-      
       totalWorked += activeElapsed;
-      totalBreak += calcTotalBreakMs(allBreaks);
+      totalBreak += calcTotalBreakMs(activeSessionBreaks);
       totalGross += calcGrossSessionDurationMs(activeSession);
     }
 

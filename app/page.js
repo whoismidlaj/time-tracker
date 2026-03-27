@@ -92,8 +92,7 @@ export default function HomePage() {
     if (timerRef.current) clearInterval(timerRef.current);
     if (session && (status === "working" || status === "break")) {
       const update = () => {
-        const allBreaks = activeBreak ? [...breaks, activeBreak] : breaks;
-        setElapsed(calcSessionDurationMs(session, allBreaks));
+        setElapsed(calcSessionDurationMs(session, breaks));
       };
       update();
       timerRef.current = setInterval(update, 1000);

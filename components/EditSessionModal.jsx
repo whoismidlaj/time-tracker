@@ -91,14 +91,17 @@ export function EditSessionModal({ session: initialSession, open, onOpenChange, 
         const bStartUTC = formatToUTC(b.break_start);
         const bEndUTC = formatToUTC(b.break_end);
         
+        let bStartMs = null;
+        let bEndMs = null;
+        
         if (bStartUTC) {
-          const bStartMs = new Date(bStartUTC).getTime();
+          bStartMs = new Date(bStartUTC).getTime();
           if (bStartMs < startMs || bStartMs > endMs) {
             throw new Error(`Break start (${b.break_start}) must be within session range`);
           }
         }
         if (bEndUTC) {
-          const bEndMs = new Date(bEndUTC).getTime();
+          bEndMs = new Date(bEndUTC).getTime();
           if (bEndMs < startMs || bEndMs > endMs) {
             throw new Error(`Break end (${b.break_end}) must be within session range`);
           }
