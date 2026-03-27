@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "TimeTrack",
+    "slug": "time-tracker-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "scheme": "time-track",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+                "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "apiUrl": "https://timetracker.onlyfrens.fun/api"
+    },
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}
