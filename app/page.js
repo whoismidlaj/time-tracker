@@ -24,6 +24,7 @@ export default function HomePage() {
   const [todaySessions, setTodaySessions] = useState([]);
   const [allSessions, setAllSessions] = useState([]);
   const [elapsed, setElapsed] = useState(0);
+  const [tick, setTick] = useState(0);
   const timerRef = useRef(null);
   
   const user = sessionData?.user;
@@ -93,6 +94,7 @@ export default function HomePage() {
     if (session && (status === "working" || status === "break")) {
       const update = () => {
         setElapsed(calcSessionDurationMs(session, breaks));
+        setTick(t => t + 1);
       };
       update();
       timerRef.current = setInterval(update, 1000);
@@ -179,6 +181,7 @@ export default function HomePage() {
           activeSessionBreaks={breaks}
           activeBreak={activeBreak}
           activeElapsed={elapsed}
+          tick={tick}
         />
 
         {/* Session history */}
