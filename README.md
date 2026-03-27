@@ -1,147 +1,68 @@
-# TimeTrack — Personal Office Time Tracker
+# ⏱️ TimeTrack
+### Your Personal Work-Life Balance Companion
 
-A mobile-first time tracking app built with Next.js 14, SQLite (`better-sqlite3`), and Tailwind CSS.  
-All data is stored locally — no cloud, no Docker, no manual database setup required.
-
----
-
-## Quick Start
-
-```bash
-npm install
-npm run dev
-```
-
-Open **http://localhost:3000** in your browser (works great on mobile too).
-
-The SQLite database is automatically created at `data/time_tracker.db` on first run.
+TimeTrack is a distraction-free tool designed to help you manage your office hours effortlessly. Built for the modern professional, it tracks your work sessions, manages your breaks, and even calculates when you can head home—all from a sleek, mobile-friendly interface.
 
 ---
 
-## Prerequisites
+## ✨ Features
 
-- **Node.js 18+** (required for Next.js 14)
-- **npm 8+**
-- Python 3 + `make` + a C++ compiler — needed to build `better-sqlite3`
-
-  Most systems already have these. If `npm install` fails on the `better-sqlite3` step:
-
-  ```bash
-  # macOS — install Xcode command line tools:
-  xcode-select --install
-
-  # Ubuntu/Debian:
-  sudo apt-get install -y python3 make g++
-
-  # Windows — install windows-build-tools:
-  npm install --global windows-build-tools
-  ```
+- **Reliable Persistence**: Powered by PostgreSQL for robust data management and multi-user support.
+- **Secure Access**: Built-in authentication ensures your session data is yours alone.
+- **Stay Focused**: A clear, live display of your current work session helps you stay mindful of your time.
+- **Healthy Breaks**: Log your breaks with a single tap to ensure you're taking the rest you deserve.
+- **Smart Exit Estimates**: No more manual math. Based on your company's work hours and your actual breaks, TimeTrack tells you exactly when you've hit your 8-hour goal.
 
 ---
 
-## Features
+## 🚀 Key Highlights
 
-| Feature | Description |
-|---|---|
-| ⏱️ Punch In / Punch Out | One-tap clock in/out with confirmation dialog |
-| ☕ Break Tracking | Start and end multiple breaks per session |
-| 🔴 Live Timer | Session duration updates every second |
-| 📊 Daily Summary | Worked / Break / Net time for today |
-| 📋 Session History | All sessions grouped by date |
-| 🔔 Toast Notifications | Feedback on every action |
-| 📱 Mobile-first UI | Large touch-friendly controls, sticky action bar |
+- **🎯 One-Tap Punching**: Start and end your workday with a single click. No complex forms or nested menus.
+- **☕ Flexible Breaks**: Take as many breaks as you need. The timer pauses your "Work Time" automatically so your stats stay honest.
+- **📊 Virtual Dashboard**: Get a high-level summary of your day at a glance—total worked, total breaks, and your net time in the office.
+- **🕒 Smart Exit Clock**: Automatically calculates your estimated departure time, adjusting dynamically if you take longer breaks than allowed.
+- **📝 Session Notes**: Keep track of what you achieved with quick, easy-to-add session descriptions.
+- **📱 Phone Ready**: The entire app is optimized for your mobile browser, making it the perfect desktop companion for your phone.
 
 ---
 
-## Project Structure
+## 🛠️ Usage Guide
 
-```
-time-tracker/
-├── app/
-│   ├── api/
-│   │   ├── status/route.js      # GET — current session + break state
-│   │   ├── session/route.js     # POST — punch_in / punch_out
-│   │   ├── break/route.js       # POST — start / end break
-│   │   └── history/route.js     # GET — session history + today
-│   ├── globals.css              # Tailwind + CSS variables (dark theme)
-│   ├── layout.js                # Root layout with fonts + Toaster
-│   └── page.js                  # Main app — live timer, state polling
-│
-├── components/
-│   ├── StatusCard.jsx           # Live status display + animated timer
-│   ├── PunchControls.jsx        # Punch In / Punch Out button + dialog
-│   ├── BreakControls.jsx        # Take a Break / End Break button
-│   ├── DailySummary.jsx         # Today's worked / break / net stats
-│   ├── SessionHistory.jsx       # Past sessions grouped by date
-│   └── ui/
-│       ├── button.jsx           # Shadcn-style Button (CVA variants)
-│       ├── card.jsx             # Card / CardHeader / CardContent etc.
-│       ├── badge.jsx            # Badge (working / break / off variants)
-│       ├── dialog.jsx           # Radix Dialog (confirmation modal)
-│       ├── toast.jsx            # Radix Toast primitives
-│       └── toaster.jsx          # Toast renderer (used in layout)
-│
-├── db/
-│   ├── database.js              # SQLite connection + auto schema init
-│   └── queries.js               # All DB query functions
-│
-├── lib/
-│   ├── utils.js                 # formatDuration, calcSessionMs, etc.
-│   ├── cn.js                    # Tailwind class merge utility
-│   └── use-toast.js             # Toast state manager
-│
-├── data/
-│   └── time_tracker.db          # SQLite file (auto-created, git-ignored)
-│
-├── next.config.js               # Webpack externals for better-sqlite3
-├── tailwind.config.js           # Dark theme + custom fonts
-├── postcss.config.js
-└── package.json
-```
+### Starting Your Day
+Simply sign in and click **"Punch In"** when you start work. You can add a quick note about your focus for the day.
+
+### Taking a Break
+Feeling like a coffee? Hit **"Take a Break"**. The status card will turn amber, and your current break timer will start ticking. Click **"End Break"** to resume your work session.
+
+### Wrapping Up
+Once you're done, click **"Punch Out"**. Your session is saved to your history, and your daily summary is updated.
+
+### Editing Past Sessions
+Need to fix a mistake? Use the **History** tab to edit or delete any past session, including adjusting break times and notes.
 
 ---
 
-## Database Schema
+## ⚙️ Setup & Customization
 
-```sql
-CREATE TABLE sessions (
-  id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  punch_in_time   DATETIME NOT NULL,
-  punch_out_time  DATETIME,               -- NULL while active
-  created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
-);
+### Quick Start
+1. **Clone the repository** and install dependencies: `npm install`
+2. **Configure your environment**: Set up your `.env` file with your `DATABASE_URL` (PostgreSQL connection string).
+3. **Launch the app**: `npm run dev`
+4. **Visit**: `http://localhost:3000`
 
-CREATE TABLE breaks (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  session_id    INTEGER NOT NULL,
-  break_start   DATETIME NOT NULL,
-  break_end     DATETIME,                 -- NULL while on break
-  FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-);
-```
+### Personalize Your Hours
+Click the **Gear icon** in the header to set your standard office hours (e.g., 9:00 AM to 6:00 PM) and your allowed break duration. These settings drive the "Estimated Exit" calculation.
 
 ---
 
-## API Reference
+## 🧑‍💻 Technical Details (For Developers)
 
-| Method | Endpoint | Body / Query | Description |
-|---|---|---|---|
-| `GET` | `/api/status` | — | Active session, break state, all breaks |
-| `POST` | `/api/session` | `{ action: "punch_in" }` | Start a new session |
-| `POST` | `/api/session` | `{ action: "punch_out", sessionId }` | End active session |
-| `POST` | `/api/break` | `{ action: "start", sessionId }` | Start a break |
-| `POST` | `/api/break` | `{ action: "end", breakId }` | End active break |
-| `GET` | `/api/history?type=today` | — | Today's sessions with breaks |
-| `GET` | `/api/history?type=recent` | — | Last 30 sessions with breaks |
+TimeTrack is built with a modern, high-performance stack:
+- **Framework**: Next.js 14 (App Router)
+- **Database**: PostgreSQL (via `pg` pool)
+- **Authentication**: NextAuth.js
+- **Styling**: Tailwind CSS with a custom Dark/Glassmorphism theme
+- **Components**: Radix UI primitives for accessible dialogues and toasts
+- **Icons**: Lucide React
 
----
 
-## Tech Stack
-
-- **Next.js 14** — App Router, API Routes
-- **React 18** — Client components, `useState` / `useEffect`
-- **Tailwind CSS** — Utility-first styling
-- **shadcn/ui** patterns — Radix UI primitives (Dialog, Toast)
-- **better-sqlite3** — Fast synchronous SQLite driver
-- **lucide-react** — Icons
-- **class-variance-authority** — Component variant system
