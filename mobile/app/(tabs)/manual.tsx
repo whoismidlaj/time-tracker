@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Platform, KeyboardAvoidingView } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Calendar, Save, X } from 'lucide-react-native';
+import { Calendar, Save, X, ArrowLeft } from 'lucide-react-native';
 import api from '../../lib/api';
 
 export default function ManualEntryScreen() {
@@ -19,8 +19,6 @@ export default function ManualEntryScreen() {
 
     setLoading(true);
     try {
-      // Basic validation and ISO formatting
-      // In a real app, use a DateTime picker
       const today = new Date().toISOString().split('T')[0];
       const fullIn = `${today}T${punchIn}:00`;
       const fullOut = `${today}T${punchOut}:00`;
@@ -42,53 +40,67 @@ export default function ManualEntryScreen() {
   };
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.form}>
-        <Text style={styles.label}>Punch In Time (HH:MM)</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="09:00"
-          value={punchIn}
-          onChangeText={setPunchIn}
-        />
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+    >
+      <ScrollView style={styles.container}>
+        <View style={styles.form}>
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+              <ArrowLeft size={20} color="#111" />
+            </TouchableOpacity>
+            <Text style={styles.title}>Manual Entry</Text>
+          </View>
 
-        <Text style={styles.label}>Punch Out Time (HH:MM)</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="17:00"
-          value={punchOut}
-          onChangeText={setPunchOut}
-        />
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>PUNCH IN TIME</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="09:00"
+              value={punchIn}
+              onChangeText={setPunchIn}
+              placeholderTextColor="#9ca3af"
+            />
+          </View>
 
-        <Text style={styles.label}>Notes</Text>
-        <TextInput
-          style={[styles.input, styles.textArea]}
-          placeholder="What did you work on?"
-          value={notes}
-          onChangeText={setNotes}
-          multiline
-          numberOfLines={4}
-        />
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>PUNCH OUT TIME</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="18:30"
+              value={punchOut}
+              onChangeText={setPunchOut}
+              placeholderTextColor="#9ca3af"
+            />
+          </View>
 
-        <View style={styles.buttonRow}>
-          <TouchableOpacity 
-            style={[styles.button, styles.cancelButton]} 
-            onPress={() => router.back()}
-          >
-            <Text style={styles.cancelButtonText}>Cancel</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.button, styles.saveButton]} 
-            onPress={handleSave}
-            disabled={loading}
-          >
-            <Save size={20} color="#fff" />
-            <Text style={styles.saveButtonText}>Save Session</Text>
-          </TouchableOpacity>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>SESSION NOTES</Text>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              placeholder="What did you work on?"
+              value={notes}
+              onChangeText={setNotes}
+              multiline
+              numberOfLines={4}
+              placeholderTextColor="#9ca3af"
+            />
+          </View>
+
+          <View style={styles.buttonRow}>
+            <TouchableOpacity 
+              style={[styles.button, styles.saveButton, loading && styles.disabledButton]} 
+              onPress={handleSave}
+              disabled={loading}
+            >
+              <Save size={18} color="#fff" />
+              <Text style={styles.saveButtonText}>{loading ? 'Saving...' : 'Save Session'}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -98,56 +110,80 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   form: {
-    padding: 24,
+    padding: 20,
+    gap: 20,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    marginBottom: 8,
+  },
+  backButton: {
+    padding: 8,
+    borderRadius: 12,
+    backgroundColor: '#f9fafb',
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#111',
+  },
+  inputGroup: {
+    gap: 8,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#9ca3af',
+    letterSpacing: 1,
+    marginLeft: 4,
   },
   input: {
     backgroundColor: '#f9fafb',
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 12,
+    borderColor: '#f3f4f6',
+    borderRadius: 16,
     padding: 16,
-    fontSize: 16,
-    marginBottom: 20,
+    fontSize: 15,
     color: '#111',
+    fontWeight: '600',
   },
   textArea: {
     height: 120,
     textAlignVertical: 'top',
   },
   buttonRow: {
-    flexDirection: 'row',
-    gap: 12,
     marginTop: 12,
   },
   button: {
-    flex: 1,
-    height: 54,
-    borderRadius: 12,
+    height: 56,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    gap: 8,
+    gap: 10,
   },
   saveButton: {
-    backgroundColor: '#000',
+    backgroundColor: '#31C478',
+    shadowColor: '#31C478',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   saveButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
-  cancelButton: {
-    backgroundColor: '#f3f4f6',
+  disabledButton: {
+    opacity: 0.6,
   },
-  cancelButtonText: {
-    color: '#666',
-    fontSize: 16,
-    fontWeight: '600',
+  versionText: {
+    textAlign: 'center',
+    marginTop: 40,
+    color: '#9ca3af',
+    fontSize: 12,
   },
 });

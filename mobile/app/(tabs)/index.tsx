@@ -1,29 +1,99 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
-import { Play, Square, Coffee, Clock, RefreshCcw } from 'lucide-react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Animated, SafeAreaView } from 'react-native';
+import { Play, Square, Coffee, Clock, MessageSquare, LogOut, RefreshCcw, Cloud, CloudOff } from 'lucide-react-native';
+import * as SecureStore from 'expo-secure-store';
 import api from '../../lib/api';
-import { formatDuration, calcSessionDurationMs } from '../../lib/utils';
+import SyncManager, { LocalStatus } from '../../lib/SyncManager';
+import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
+import { 
+  formatDuration, 
+  calcSessionDurationMs, 
+  calcTotalBreakMs, 
+  calcExitTime, 
+  formatTime,
+  formatShortDuration
+} from '../../lib/utils';
 
 export default function TimerScreen() {
-  const [status, setStatus] = useState('off');
+  const { colors, theme } = useTheme();
+  const { performAction, syncStatus } = useAuth();
+  const [status, setStatus] = useState<'working' | 'break' | 'off'>('off');
   const [session, setSession] = useState<any>(null);
   const [activeBreak, setActiveBreak] = useState<any>(null);
   const [breaks, setBreaks] = useState<any[]>([]);
   const [elapsed, setElapsed] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [notes, setNotes] = useState('');
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [settings, setSettings] = useState<any>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  // Pulse animation for active status
+  useEffect(() => {
+    if (status !== 'off') {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.25,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      pulseAnim.setValue(1);
+    }
+  }, [status]);
+
+  // Load offline state first
+  useEffect(() => {
+    const loadLocal = async () => {
+      const local = await SyncManager.getLocalStatus();
+      if (local) {
+        setStatus(local.status);
+        setSession(local.session);
+        setActiveBreak(local.activeBreak);
+        setBreaks(local.breaks);
+        setNotes(local.session?.notes || '');
+      }
+      setLoading(false);
+    };
+    loadLocal();
+  }, []);
 
   const fetchStatus = useCallback(async () => {
     try {
       const { data } = await api.get('/status');
-      setStatus(data.status || 'off');
+      const newStatus = data.status || 'off';
+      setStatus(newStatus);
       setSession(data.session || null);
       setActiveBreak(data.activeBreak || null);
       setBreaks(data.breaks || []);
+      setNotes(data.session?.notes || '');
+      
+      // Persist locally
+      await SyncManager.saveLocalStatus({
+        status: newStatus,
+        session: data.session,
+        activeBreak: data.activeBreak,
+        breaks: data.breaks,
+        lastUpdated: Date.now()
+      });
+
+      const savedSettings = await SecureStore.getItemAsync('appSettings');
+      if (savedSettings) setSettings(JSON.parse(savedSettings));
     } catch (err) {
-      console.error('Fetch status error:', err);
+      console.warn('Network fetch failed, using local status');
     } finally {
-      setLoading(false);
       setRefreshing(false);
     }
   }, []);
@@ -33,265 +103,660 @@ export default function TimerScreen() {
   }, [fetchStatus]);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    if (timerRef.current) clearInterval(timerRef.current);
     if (session && (status === 'working' || status === 'break')) {
       const update = () => {
-        const finishedBreaks = breaks.filter(b => b.break_end);
-        setElapsed(calcSessionDurationMs(session, finishedBreaks));
+        setElapsed(calcSessionDurationMs(session, breaks));
       };
       update();
-      interval = setInterval(update, 1000);
+      timerRef.current = setInterval(update, 1000);
     } else {
       setElapsed(0);
     }
-    return () => clearInterval(interval);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
   }, [session, status, breaks]);
 
-  const handleAction = async (action: string, payload: any = {}) => {
-    setLoading(true);
-    try {
-      if (action === 'punch_in' || action === 'punch_out') {
-        await api.post('/session', { action, ...payload });
-      } else if (action === 'start_break' || action === 'end_break') {
-        await api.post('/break', { 
-          action: action === 'start_break' ? 'start' : 'end', 
-          ...payload 
-        });
+  const handleAction = async (actionType: string, payload: any = {}) => {
+    const timestamp = new Date().toISOString();
+    let newStatus: 'working' | 'break' | 'off' = status;
+    let newSession = session ? { ...session } : null;
+    let newActiveBreak = activeBreak ? { ...activeBreak } : null;
+    let newBreaks = [...breaks];
+
+    // Optimistic Logic
+    if (actionType === 'punch_in') {
+      newStatus = 'working';
+      newSession = { 
+        punch_in_time: timestamp, 
+        id: 'tmp-' + Date.now(),
+        notes: ''
+      };
+    } else if (actionType === 'punch_out') {
+      newStatus = 'off';
+      newSession = null;
+      newActiveBreak = null;
+      newBreaks = [];
+    } else if (actionType === 'start_break') {
+      newStatus = 'break';
+      newActiveBreak = { break_start: timestamp, id: 'tmp-b-' + Date.now() };
+    } else if (actionType === 'end_break') {
+      newStatus = 'working';
+      if (newActiveBreak) {
+        newBreaks.push({ ...newActiveBreak, break_end: timestamp });
+        newActiveBreak = null;
       }
-      await fetchStatus();
+    }
+
+    // Update Local State Immediately
+    setStatus(newStatus);
+    setSession(newSession);
+    setActiveBreak(newActiveBreak);
+    setBreaks(newBreaks);
+
+    // Persist optimistic state
+    await SyncManager.saveLocalStatus({
+      status: newStatus,
+      session: newSession,
+      activeBreak: newActiveBreak,
+      breaks: newBreaks,
+      lastUpdated: Date.now()
+    });
+
+    // Queue for Sync
+    const endpoint = (actionType === 'punch_in' || actionType === 'punch_out') ? '/session' : '/break';
+    const actionPayload = {
+      action: actionType === 'start_break' ? 'start' : actionType === 'end_break' ? 'end' : actionType,
+      sessionId: session?.id?.toString().startsWith('tmp') ? undefined : session?.id,
+      breakId: activeBreak?.id?.toString().startsWith('tmp') ? undefined : activeBreak?.id,
+      ...payload,
+      timestamp
+    };
+
+    await performAction({
+      type: 'session',
+      endpoint,
+      method: 'POST',
+      payload: actionPayload
+    });
+  };
+
+  const saveNotes = async () => {
+    if (!session) return;
+    setSavingNotes(true);
+    try {
+      await performAction({
+        type: 'session',
+        endpoint: `/session/${session.id}`,
+        method: 'PATCH',
+        payload: { notes }
+      });
+      // Handle local update for notes
+      const local = await SyncManager.getLocalStatus();
+      if (local && local.session) {
+        local.session.notes = notes;
+        await SyncManager.saveLocalStatus(local);
+      }
     } catch (err) {
-      console.error('Action error:', err);
+      console.error('Save notes error:', err);
     } finally {
-      setLoading(false);
+      setSavingNotes(false);
     }
   };
 
+  const syncIndicator = () => {
+    let Icon = Cloud;
+    let text = 'Synced';
+    let color = colors.mutedForeground;
+
+    if (syncStatus === 'syncing') {
+      Icon = RefreshCcw;
+      text = 'Syncing...';
+      color = colors.primary;
+    } else if (syncStatus === 'offline') {
+      Icon = CloudOff;
+      text = 'Offline Mode';
+      color = '#f59e0b';
+    } else if (syncStatus === 'error') {
+      Icon = CloudOff;
+      text = 'Sync Error';
+      color = colors.destructive;
+    }
+
+    return (
+      <View style={[styles.syncIndicator, { backgroundColor: color + '10' }]}>
+        <Icon size={12} color={color} />
+        <Text style={[styles.syncText, { color }]}>{text}</Text>
+      </View>
+    );
+  };
+
+  const isWorking = status === 'working';
+  const isBreak = status === 'break';
+  const isOff = status === 'off';
+
+  const totalBreakMs = calcTotalBreakMs(breaks);
+  const exitTime = session ? calcExitTime(session.punch_in_time, totalBreakMs, settings) : null;
+  const currentBreakMs = isBreak && activeBreak 
+    ? Date.now() - new Date(activeBreak.break_start).getTime() 
+    : 0;
+
   if (loading && !refreshing) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#000" />
+      <View style={[styles.centerContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
-  const isWorking = status === 'working';
-  const isOnBreak = status === 'break';
-  const isOff = status === 'off';
-
   return (
-    <ScrollView 
-      style={styles.container}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchStatus(); }} />
-      }
-    >
-      <View style={styles.timerContainer}>
-        <View style={[styles.statusBadge, isWorking && styles.workingBadge, isOnBreak && styles.breakBadge]}>
-          <Text style={styles.statusText}>
-            {status.toUpperCase()}
-          </Text>
-        </View>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl 
+              refreshing={refreshing} 
+              onRefresh={() => { setRefreshing(true); fetchStatus(); }} 
+              tintColor={colors.primary}
+            />
+          }
+        >
+          <View style={styles.header}>
+            <View>
+              <Text style={[styles.greeting, { color: colors.mutedForeground }]}>Personal OS</Text>
+              <Text style={[styles.title, { color: colors.foreground }]}>Tracker</Text>
+            </View>
+            {syncIndicator()}
+          </View>
 
-        <Text style={styles.timerText}>{formatDuration(elapsed)}</Text>
-        <Text style={styles.dateText}>{new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</Text>
-      </View>
+          <View style={styles.mainContent}>
+            {/* Redesigned Card */}
+            <View style={[
+              styles.statusCard,
+              { backgroundColor: colors.card, borderColor: colors.border },
+              isWorking && { backgroundColor: theme === 'light' ? '#f0fdf4' : '#064e3b20', borderColor: theme === 'light' ? '#dcfce7' : '#065f4650' },
+              isBreak && { backgroundColor: theme === 'light' ? '#fffbeb' : '#451a0320', borderColor: theme === 'light' ? '#fef3c7' : '#78350f50' }
+            ]}>
+              {/* Ambient Glow */}
+              <View style={[
+                styles.ambientGlow,
+                { backgroundColor: isWorking ? '#10b981' : isBreak ? '#f59e0b' : colors.mutedForeground, opacity: theme === 'light' ? 0.05 : 0.1 }
+              ]} />
 
-      <View style={styles.controlsContainer}>
-        {isOff ? (
-          <TouchableOpacity 
-            style={[styles.mainButton, styles.punchInButton]} 
-            onPress={() => handleAction('punch_in')}
-          >
-            <Play size={32} color="#fff" />
-            <Text style={styles.mainButtonText}>Punch In</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.activeControls}>
-            <View style={styles.breakRow}>
-              {isOnBreak ? (
-                <TouchableOpacity 
-                  style={[styles.actionButton, styles.endBreakButton]}
-                  onPress={() => handleAction('end_break', { breakId: activeBreak?.id })}
-                >
-                  <Play size={24} color="#fff" />
-                  <Text style={styles.actionButtonText}>End Break</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity 
-                  style={[styles.actionButton, styles.startBreakButton]}
-                  onPress={() => handleAction('start_break', { sessionId: session?.id })}
-                >
-                  <Coffee size={24} color="#000" />
-                  <Text style={[styles.actionButtonText, { color: '#000' }]}>Start Break</Text>
-                </TouchableOpacity>
+              <View style={styles.cardHeader}>
+                <View style={styles.statusRow}>
+                  <View style={styles.dotContainer}>
+                    {!isOff && (
+                      <Animated.View style={[
+                        styles.statusPing,
+                        { backgroundColor: isWorking ? '#10b981' : '#f59e0b' },
+                        { transform: [{ scale: pulseAnim }] }
+                      ]} />
+                    )}
+                    <View style={[
+                      styles.statusDot, 
+                      { backgroundColor: isWorking ? '#10b981' : isBreak ? '#f59e0b' : colors.mutedForeground }
+                    ]} />
+                  </View>
+                  <View style={[
+                    styles.badge, 
+                    { backgroundColor: isWorking ? '#dcfce7' : isBreak ? '#fef3c7' : colors.muted },
+                    theme === 'dark' && { backgroundColor: isWorking ? '#065f4640' : isBreak ? '#78350f40' : colors.muted }
+                  ]}>
+                    <Text style={[
+                      styles.statusLabel, 
+                      { color: isWorking ? '#166534' : isBreak ? '#92400e' : colors.mutedForeground, paddingHorizontal: 4 },
+                      theme === 'dark' && { color: isWorking ? '#34d399' : isBreak ? '#fbbf24' : colors.mutedForeground }
+                    ]}>
+                      {status === 'off' ? 'Offline' : status === 'working' ? 'Working' : 'On Break'}
+                    </Text>
+                  </View>
+                </View>
+                
+                {session && !isOff && (
+                  <View style={[styles.inTimeContainer, { backgroundColor: colors.muted }]}>
+                    <Text style={[styles.inTimeText, { color: colors.mutedForeground }]}>
+                      IN: {formatTime(session.punch_in_time)}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.timerDisplay}>
+                <Text style={[
+                  styles.timerText, 
+                  { color: colors.foreground },
+                  isOff && { color: colors.mutedForeground + '40' },
+                  isBreak && { color: '#f59e0b' }
+                ]}>
+                  {isOff ? '--:--:--' : formatDuration(elapsed)}
+                </Text>
+                <Text style={[styles.timerSubText, { color: colors.mutedForeground }]}>
+                  {isOff ? 'STATUS: INACTIVE' : isBreak ? 'SESSION NET WORK TIME' : 'ACTIVE SESSION TIME'}
+                </Text>
+              </View>
+
+              {/* Notes Input - Themed like Shadcn Textarea */}
+              {!isOff && session && (
+                <View style={styles.notesContainer}>
+                  <View style={styles.notesHeader}>
+                    <MessageSquare size={12} color={colors.mutedForeground} />
+                    <Text style={[styles.notesLabel, { color: colors.mutedForeground }]}>SESSION NOTES</Text>
+                    {savingNotes && <ActivityIndicator size="small" color={colors.primary}  />}
+                  </View>
+                  <TextInput
+                    style={[
+                      styles.notesInput, 
+                      { 
+                        backgroundColor: theme === 'light' ? '#fff' : colors.background, 
+                        borderColor: colors.border,
+                        color: colors.foreground 
+                      }
+                    ]}
+                    placeholder="Update notes..."
+                    placeholderTextColor={colors.mutedForeground + '60'}
+                    value={notes}
+                    onChangeText={setNotes}
+                    onBlur={saveNotes}
+                    multiline
+                  />
+                </View>
+              )}
+
+              {isBreak && (
+                <View style={[styles.breakTimerRow, { borderTopColor: colors.border + '40' }]}>
+                  <Text style={[styles.breakTimerLabel, { color: colors.mutedForeground }]}>CURRENT BREAK</Text>
+                  <Text style={[styles.breakTimerValue, { color: '#f59e0b' }]}>{formatDuration(currentBreakMs)}</Text>
+                </View>
+              )}
+
+              {!isOff && (
+                <View style={[styles.metricsContainer, { borderTopColor: colors.border + '40' }]}>
+                  <View style={styles.metricRow}>
+                    <Text style={[styles.metricLabel, { color: colors.mutedForeground }]}>BREAKS LOGGED</Text>
+                    <Text style={[styles.metricValue, { color: colors.foreground }]}>
+                      {breaks.filter(b => b.break_end).length} · {formatShortDuration(totalBreakMs)}
+                    </Text>
+                  </View>
+
+                  {exitTime && (
+                    <View style={[
+                      styles.exitTimeBox, 
+                      { backgroundColor: colors.primary + '10', borderColor: colors.primary + '20' }
+                    ]}>
+                      <View style={styles.exitTimeInfo}>
+                        <View style={[styles.exitIconContainer, { backgroundColor: colors.primary + '20' }]}>
+                          <LogOut size={14} color={colors.primary} />
+                        </View>
+                        <View>
+                          <Text style={[styles.exitLabel, { color: colors.mutedForeground }]}>ESTIMATED EXIT</Text>
+                          <Text style={[styles.exitValue, { color: colors.foreground }]}>{formatTime(exitTime)}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.officeRuleInfo}>
+                        <Text style={[styles.ruleLabel, { color: colors.mutedForeground }]}>Total Stay</Text>
+                        <Text style={[styles.ruleValue, { color: colors.primary }]}>09:30 - 18:30 Rule</Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
               )}
             </View>
 
-            <TouchableOpacity 
-              style={[styles.mainButton, styles.punchOutButton]} 
-              onPress={() => handleAction('punch_out', { sessionId: session?.id })}
-            >
-              <Square size={32} color="#fff" />
-              <Text style={styles.mainButtonText}>Punch Out</Text>
-            </TouchableOpacity>
+            {/* Controls */}
+            <View style={styles.controlsWrapper}>
+              {isOff ? (
+                <TouchableOpacity 
+                  activeOpacity={0.8}
+                  style={[styles.primaryButton, { backgroundColor: colors.foreground }]} 
+                  onPress={() => handleAction('punch_in')}
+                >
+                  <View style={[styles.buttonIcon, { backgroundColor: colors.background + '20' }]}>
+                    <Play size={20} color={colors.background} />
+                  </View>
+                  <Text style={[styles.primaryButtonText, { color: colors.background }]}>Punch In</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.actionRow}>
+                  {isBreak ? (
+                    <TouchableOpacity 
+                      activeOpacity={0.8}
+                      style={[styles.actionButton, { backgroundColor: '#f59e0b' }]}
+                      onPress={() => handleAction('end_break', { breakId: activeBreak?.id })}
+                    >
+                      <Play size={18} color="#fff" />
+                      <Text style={[styles.actionButtonText, { color: '#fff' }]}>End Break</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity 
+                      activeOpacity={0.8}
+                      style={[styles.actionButton, { backgroundColor: colors.muted, borderWidth: 1, borderColor: colors.border }]}
+                      onPress={() => handleAction('start_break', { sessionId: session?.id })}
+                    >
+                      <Coffee size={18} color={colors.foreground} />
+                      <Text style={[styles.actionButtonText, { color: colors.foreground }]}>Start Break</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity 
+                    activeOpacity={0.8}
+                    style={[styles.actionButton, { backgroundColor: colors.destructive }]}
+                    onPress={() => handleAction('punch_out', { sessionId: session?.id })}
+                  >
+                    <Square size={16} color="#fff" />
+                    <Text style={[styles.actionButtonText, { color: '#fff' }]}>Punch Out</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
           </View>
-        )}
-      </View>
-
-      <View style={styles.infoSection}>
-        <View style={styles.infoCard}>
-          <Clock size={20} color="#666" />
-          <View style={styles.infoContent}>
-            <Text style={styles.infoLabel}>Started At</Text>
-            <Text style={styles.infoValue}>
-              {session ? new Date(session.punch_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.infoCard}>
-          <Coffee size={20} color="#666" />
-          <View style={styles.infoContent}>
-            <Text style={styles.infoLabel}>Total Breaks</Text>
-            <Text style={styles.infoValue}>{breaks.length}</Text>
-          </View>
-        </View>
-      </View>
-    </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 32,
+    paddingHorizontal: 24,
+    paddingTop: 10,
+  },
+  greeting: {
+    fontSize: 13,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: -1,
+  },
+  syncIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  syncText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  scrollContent: {
+    paddingBottom: 40,
   },
   centerContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#fff',
   },
-  timerContainer: {
+  mainContent: {
+    padding: 24,
+    gap: 24,
+  },
+  statusCard: {
+    borderRadius: 28,
+    padding: 24,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 3,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  ambientGlow: {
+    position: 'absolute',
+    top: -40,
+    right: -40,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 48,
-    backgroundColor: '#f9fafb',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    marginBottom: 24,
+    zIndex: 1,
   },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 20,
-    backgroundColor: '#9ca3af',
-    marginBottom: 16,
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
-  workingBadge: {
-    backgroundColor: '#10b981',
+  dotContainer: {
+    width: 12,
+    height: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  breakBadge: {
-    backgroundColor: '#f59e0b',
+  statusPing: {
+    position: 'absolute',
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    opacity: 0.4,
   },
-  statusText: {
-    color: '#fff',
-    fontSize: 12,
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  statusLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  inTimeContainer: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  inTimeText: {
+    fontSize: 10,
     fontWeight: '700',
-    letterSpacing: 1,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  timerDisplay: {
+    marginBottom: 28,
+    zIndex: 1,
   },
   timerText: {
-    fontSize: 72,
+    fontSize: 52,
     fontWeight: '800',
-    color: '#111',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: -2,
+    lineHeight: 56,
+  },
+  timerSubText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+    marginTop: 8,
+    textTransform: 'uppercase',
+  },
+  notesContainer: {
+    marginTop: 12,
+    gap: 8,
+    zIndex: 1,
+  },
+  notesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 2,
+  },
+  notesLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+  },
+  notesInput: {
+    borderRadius: 14,
+    padding: 14,
+    fontSize: 13,
+    minHeight: 80,
+    textAlignVertical: 'top',
+    borderWidth: 1,
+    fontWeight: '500',
+  },
+  breakTimerRow: {
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  breakTimerLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  breakTimerValue: {
+    fontSize: 20,
+    fontWeight: '800',
     fontVariant: ['tabular-nums'],
   },
-  dateText: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 8,
-  },
-  controlsContainer: {
-    padding: 24,
-  },
-  activeControls: {
+  metricsContainer: {
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
     gap: 16,
+    zIndex: 1,
   },
-  breakRow: {
+  metricRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 2,
   },
-  mainButton: {
-    height: 100,
-    borderRadius: 24,
+  metricLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  metricValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  exitTimeBox: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+  },
+  exitTimeInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  exitIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  exitLabel: {
+    fontSize: 8,
+    fontWeight: '800',
+    letterSpacing: 1,
+    marginBottom: 1,
+  },
+  exitValue: {
+    fontSize: 15,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+  },
+  officeRuleInfo: {
+    alignItems: 'flex-end',
+  },
+  ruleLabel: {
+    fontSize: 8,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  ruleValue: {
+    fontSize: 10,
+    fontWeight: '800',
+    marginTop: 1,
+  },
+  controlsWrapper: {
+    marginTop: 12,
+  },
+  primaryButton: {
+    height: 68,
+    borderRadius: 22,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
     elevation: 6,
   },
-  punchInButton: {
-    backgroundColor: '#000',
+  buttonIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  punchOutButton: {
-    backgroundColor: '#ef4444',
+  primaryButtonText: {
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
-  mainButtonText: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: '700',
+  actionRow: {
+    flexDirection: 'row',
+    gap: 14,
   },
   actionButton: {
     flex: 1,
-    height: 60,
-    borderRadius: 16,
+    height: 64,
+    borderRadius: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  startBreakButton: {
-    backgroundColor: '#fff',
-  },
-  endBreakButton: {
-    backgroundColor: '#f59e0b',
-    borderColor: '#f59e0b',
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
   actionButtonText: {
     fontSize: 16,
-    fontWeight: '600',
-  },
-  infoSection: {
-    paddingHorizontal: 24,
-    paddingBottom: 40,
-    flexDirection: 'row',
-    gap: 16,
-  },
-  infoCard: {
-    flex: 1,
-    backgroundColor: '#f3f4f6',
-    borderRadius: 20,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  infoContent: {
-    flex: 1,
-  },
-  infoLabel: {
-    fontSize: 10,
-    color: '#666',
-    textTransform: 'uppercase',
     fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  infoValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111',
-  },
+  }
 });

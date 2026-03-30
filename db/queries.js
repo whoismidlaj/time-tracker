@@ -137,12 +137,12 @@ export async function getActiveBreak(sessionId) {
   return res.rows[0];
 }
 
-export async function punchIn(userId, notes = null) {
+export async function punchIn(userId, notes = null, timestamp = null) {
   if (!userId) throw new Error('Not authenticated');
   if (await getActiveSession(userId)) throw new Error('Already punched in');
 
   const db = await getDb();
-  const now = new Date().toISOString();
+  const now = timestamp || new Date().toISOString();
   const res = await db.query(
     'INSERT INTO sessions (user_id, punch_in_time, notes) VALUES ($1, $2, $3) RETURNING id',
     [userId, now, notes]
@@ -218,14 +218,14 @@ export async function deleteSession(sessionId, userId) {
   return true;
 }
 
-export async function punchOut(sessionId, userId) {
+export async function punchOut(sessionId, userId, timestamp = null) {
   if (!userId) throw new Error('Not authenticated');
   const session = await getSessionById(sessionId);
   if (!session || session.user_id !== userId) throw new Error('Session not found');
   if (session.punch_out_time) throw new Error('Already punched out');
 
   const db = await getDb();
-  const now = new Date().toISOString();
+  const now = timestamp || new Date().toISOString();
   const activeBreak = await getActiveBreak(sessionId);
   if (activeBreak) {
     await db.query('UPDATE breaks SET break_end = $1 WHERE id = $2', [now, activeBreak.id]);
@@ -234,7 +234,7 @@ export async function punchOut(sessionId, userId) {
   return getSessionById(sessionId);
 }
 
-export async function startBreak(sessionId, userId) {
+export async function startBreak(sessionId, userId, timestamp = null) {
   if (!userId) throw new Error('Not authenticated');
   const session = await getSessionById(sessionId);
   if (!session || session.user_id !== userId) throw new Error('Session not found');
@@ -242,7 +242,7 @@ export async function startBreak(sessionId, userId) {
   if (await getActiveBreak(sessionId)) throw new Error('Break already in progress');
 
   const db = await getDb();
-  const now = new Date().toISOString();
+  const now = timestamp || new Date().toISOString();
   const res = await db.query(
     'INSERT INTO breaks (session_id, break_start) VALUES ($1, $2) RETURNING id',
     [sessionId, now]
@@ -251,7 +251,7 @@ export async function startBreak(sessionId, userId) {
   return breakRes.rows[0];
 }
 
-export async function endBreak(breakId, userId) {
+export async function endBreak(breakId, userId, timestamp = null) {
   if (!userId) throw new Error('Not authenticated');
   const db = await getDb();
   const breakRes = await db.query('SELECT * FROM breaks WHERE id = $1', [breakId]);
@@ -261,7 +261,7 @@ export async function endBreak(breakId, userId) {
   if (!session || session.user_id !== userId) throw new Error('Break not found');
   if (brk.break_end) throw new Error('Break already ended');
 
-  const now = new Date().toISOString();
+  const now = timestamp || new Date().toISOString();
   await db.query('UPDATE breaks SET break_end = $1 WHERE id = $2', [now, breakId]);
   const updatedBreakRes = await db.query('SELECT * FROM breaks WHERE id = $1', [breakId]);
   return updatedBreakRes.rows[0];

@@ -6,15 +6,15 @@ export async function POST(request) {
     const userId = await getUserIdFromRequest(request);
     if (!userId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { action, sessionId, breakId } = await request.json();
+    const { action, sessionId, breakId, timestamp } = await request.json();
     if (action === 'start') {
       if (!sessionId) return Response.json({ error: 'sessionId required' }, { status: 400 });
-      const brk = await startBreak(Number(sessionId), Number(userId));
+      const brk = await startBreak(Number(sessionId), Number(userId), timestamp);
       return Response.json({ success: true, break: brk });
     }
     if (action === 'end') {
       if (!breakId) return Response.json({ error: 'breakId required' }, { status: 400 });
-      const brk = await endBreak(Number(breakId), Number(userId));
+      const brk = await endBreak(Number(breakId), Number(userId), timestamp);
       return Response.json({ success: true, break: brk });
     }
 

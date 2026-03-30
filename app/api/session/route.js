@@ -6,14 +6,14 @@ export async function POST(request) {
     const userId = await getUserIdFromRequest(request);
     if (!userId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { action, sessionId } = await request.json();
+    const { action, sessionId, timestamp } = await request.json();
     if (action === 'punch_in') {
-      const session = await punchIn(Number(userId));
+      const session = await punchIn(Number(userId), null, timestamp);
       return Response.json({ success: true, session });
     }
     if (action === 'punch_out') {
       if (!sessionId) return Response.json({ error: 'sessionId required' }, { status: 400 });
-      const session = await punchOut(Number(sessionId), Number(userId));
+      const session = await punchOut(Number(sessionId), Number(userId), timestamp);
       return Response.json({ success: true, session });
     }
     if (action === 'manual_entry') {

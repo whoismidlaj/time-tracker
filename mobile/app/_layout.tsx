@@ -1,39 +1,47 @@
 import { Stack } from 'expo-router';
-import { useEffect, useState } from 'react';
-import * as SecureStore from 'expo-secure-store';
+import { useEffect } from 'react';
 import { useRouter, useSegments } from 'expo-router';
+import { AuthProvider, useAuth } from '../context/AuthContext';
+import { ThemeProvider, useTheme } from '../context/ThemeContext';
+import { StatusBar } from 'expo-status-bar';
 
-export default function RootLayout() {
-  const [isAuth, setIsAuth] = useState<boolean | null>(null);
+function RootLayoutNav() {
+  const { isAuth, loading } = useAuth();
+  const { theme } = useTheme();
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const token = await SecureStore.getItemAsync('userToken');
-      setIsAuth(!!token);
-    };
-    checkAuth();
-  }, []);
-
-  useEffect(() => {
-    if (isAuth === null) return;
+    if (loading) return;
 
     const inAuthGroup = segments[0] === '(auth)';
 
     if (!isAuth && !inAuthGroup) {
-      // Redirect to login if NOT authenticated and NOT in auth group
       router.replace('/(auth)/login');
     } else if (isAuth && inAuthGroup) {
-      // Redirect to dashboard if authenticated and in auth group
       router.replace('/(tabs)');
     }
-  }, [isAuth, segments]);
+  }, [isAuth, segments, loading]);
+
+  if (loading) return null;
 
   return (
-    <Stack>
-      <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-    </Stack>
+    <>
+      <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(auth)/login" />
+        <Stack.Screen name="(tabs)" />
+      </Stack>
+    </>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <ThemeProvider>
+      <AuthProvider>
+        <RootLayoutNav />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

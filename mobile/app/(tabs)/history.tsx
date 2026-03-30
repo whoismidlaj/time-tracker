@@ -1,15 +1,30 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity } from 'react-native';
-import { Calendar, Clock, ChevronRight, Plus } from 'lucide-react-native';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity, SectionList, SafeAreaView } from 'react-native';
+import { Calendar, Clock, ChevronRight, Plus, Coffee, PenSquare } from 'lucide-react-native';
 import { useRouter, Stack } from 'expo-router';
 import api from '../../lib/api';
-import { formatDuration } from '../../lib/utils';
+import { useTheme } from '../../context/ThemeContext';
+import SessionDetailModal from '../../components/SessionDetailModal';
+import EditSessionModal from '../../components/EditSessionModal';
+import { 
+  formatDuration, 
+  formatDate, 
+  formatTime, 
+  formatShortDuration,
+  calcSessionDurationMs,
+  calcTotalBreakMs 
+} from '../../lib/utils';
 
 export default function HistoryScreen() {
+  const { colors, theme } = useTheme();
   const [sessions, setSessions] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
-  const router = useRouter();
+  
+  // Modal states
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [editVisible, setEditVisible] = useState(false);
+  const [selectedSession, setSelectedSession] = useState<any>(null);
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -27,185 +42,300 @@ export default function HistoryScreen() {
     fetchHistory();
   }, [fetchHistory]);
 
-  const renderSession = ({ item }: { item: any }) => {
-    const punchIn = new Date(item.punch_in_time);
-    const punchOut = item.punch_out_time ? new Date(item.punch_out_time) : null;
+  const groupedSessions = useMemo(() => {
+    const groups: { [key: string]: { title: string, data: any[], totalMs: number } } = {};
     
-    // Calculate duration
-    let durationMs = 0;
-    if (punchOut) {
-      durationMs = punchOut.getTime() - punchIn.getTime();
-      (item.breaks || []).forEach((b: any) => {
-        if (b.break_start && b.break_end) {
-          durationMs -= (new Date(b.break_end).getTime() - new Date(b.break_start).getTime());
-        }
-      });
-    }
+    sessions.forEach(session => {
+      const dateKey = formatDate(session.punch_in_time);
+      if (!groups[dateKey]) {
+        groups[dateKey] = { title: dateKey, data: [], totalMs: 0 };
+      }
+      
+      const durationMs = session.punch_out_time 
+        ? calcSessionDurationMs(session, session.breaks) 
+        : 0;
+        
+      groups[dateKey].data.push(session);
+      groups[dateKey].totalMs += durationMs;
+    });
+
+    return Object.values(groups);
+  }, [sessions]);
+
+  const handleSessionPress = (session: any) => {
+    setSelectedSession(session);
+    setDetailVisible(true);
+  };
+
+  const handleEditPress = (session: any) => {
+    setSelectedSession(session);
+    setDetailVisible(false);
+    setEditVisible(true);
+  };
+
+  const handleManualEntry = () => {
+    setSelectedSession(null);
+    setEditVisible(true);
+  };
+
+  const renderSession = ({ item }: { item: any }) => {
+    const isActive = !item.punch_out_time;
+    const durationMs = item.punch_out_time ? calcSessionDurationMs(item, item.breaks) : 0;
+    const breakMs = calcTotalBreakMs(item.breaks || []);
 
     return (
-      <View style={styles.sessionCard}>
-        <View style={styles.dateBlock}>
-          <Text style={styles.dayText}>{punchIn.getDate()}</Text>
-          <Text style={styles.monthText}>{punchIn.toLocaleDateString(undefined, { month: 'short' }).toUpperCase()}</Text>
-        </View>
-        
-        <View style={styles.detailsBlock}>
-          <View style={styles.timeRow}>
-            <Text style={styles.timeText}>
-              {punchIn.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              {' - '}
-              {punchOut ? punchOut.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Ongoing'}
+      <TouchableOpacity 
+        style={[
+          styles.sessionCard, 
+          { backgroundColor: colors.card, borderColor: colors.border },
+          isActive && { backgroundColor: theme === 'light' ? '#f0fdf4' : '#065f4620', borderColor: theme === 'light' ? '#dcfce7' : '#065f4650' }
+        ]}
+        activeOpacity={0.7}
+        onPress={() => handleSessionPress(item)}
+      >
+        <View style={styles.sessionInfo}>
+          <View style={styles.timeHeader}>
+            <Text style={[styles.timeRange, { color: colors.foreground }]}>
+              {formatTime(item.punch_in_time)} — {item.punch_out_time ? formatTime(item.punch_out_time) : 'Ongoing'}
             </Text>
-            <View style={[styles.durationBadge, !punchOut && styles.ongoingBadge]}>
-              <Text style={styles.durationText}>
-                {punchOut ? formatDuration(durationMs) : 'LIVE'}
-              </Text>
-            </View>
+            {isActive && (
+              <View style={styles.activeBadge}>
+                <Text style={styles.activeBadgeText}>ACTIVE</Text>
+              </View>
+            )}
           </View>
           
           <View style={styles.metaRow}>
-            <Text style={styles.metaText}>{item.breaks?.length || 0} breaks</Text>
-            {item.notes ? (
-              <Text style={styles.notesText} numberOfLines={1}>• {item.notes}</Text>
-            ) : null}
+            <View style={styles.metaItem}>
+              <Clock size={12} color={colors.mutedForeground} />
+              <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>WORK</Text>
+              <Text style={[styles.metaValue, { color: colors.foreground }]}>
+                {isActive ? '—' : formatShortDuration(durationMs)}
+              </Text>
+            </View>
+            {breakMs > 0 && (
+              <View style={styles.metaItem}>
+                <Coffee size={12} color={colors.mutedForeground} />
+                <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>BREAK</Text>
+                <Text style={[styles.metaValue, { color: colors.foreground }]}>{formatShortDuration(breakMs)}</Text>
+              </View>
+            )}
           </View>
+
+          {item.notes && (
+            <Text style={[styles.notesPreview, { color: colors.mutedForeground, borderLeftColor: colors.border }]} numberOfLines={1}>
+              {item.notes}
+            </Text>
+          )}
         </View>
-        
-        <ChevronRight size={16} color="#ccc" />
-      </View>
+        <ChevronRight size={16} color={colors.mutedForeground} />
+      </TouchableOpacity>
     );
   };
 
+  const renderSectionHeader = ({ section }: { section: any }) => (
+    <View style={styles.sectionHeader}>
+      <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>{section.title}</Text>
+      <View style={[styles.sectionTotal, { backgroundColor: colors.primary + '15', borderColor: colors.primary + '10' }]}>
+        <Text style={[styles.sectionTotalText, { color: colors.primary }]}>{formatShortDuration(section.totalMs)}</Text>
+      </View>
+    </View>
+  );
+
   if (loading && !refreshing) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#000" />
+      <View style={[styles.centerContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen 
         options={{
+          headerShown: true,
+          headerStyle: { backgroundColor: colors.background },
+          headerTitleStyle: { color: colors.foreground, fontWeight: '800' },
+          headerTitle: 'Activity History',
+          headerShadowVisible: false,
           headerRight: () => (
-            <TouchableOpacity onPress={() => router.push('/(tabs)/manual')} style={{ marginRight: 16 }}>
-              <Plus size={24} color="#000" />
+            <TouchableOpacity 
+              onPress={handleManualEntry}
+              style={[styles.headerButton, { backgroundColor: colors.primary + '15' }]}
+            >
+              <Plus size={18} color={colors.primary} />
+              <Text style={[styles.headerButtonText, { color: colors.primary }]}>Manual</Text>
             </TouchableOpacity>
-          ),
+          )
         }} 
       />
-      <FlatList
-        data={sessions}
+      
+      <SectionList
+        sections={groupedSessions}
         renderItem={renderSession}
+        renderSectionHeader={renderSectionHeader}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.listContent}
+        stickySectionHeadersEnabled={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchHistory(); }} />
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={() => { setRefreshing(true); fetchHistory(); }} 
+            tintColor={colors.primary}
+          />
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Calendar size={48} color="#e5e7eb" />
-            <Text style={styles.emptyText}>No sessions found</Text>
+            <Calendar size={48} color={colors.mutedForeground + '40'} />
+            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No sessions found yet</Text>
           </View>
         }
       />
-    </View>
+
+      {/* Modals */}
+      <SessionDetailModal 
+        session={selectedSession}
+        visible={detailVisible}
+        onClose={() => setDetailVisible(false)}
+        onEdit={handleEditPress}
+      />
+
+      <EditSessionModal 
+        session={selectedSession}
+        visible={editVisible}
+        onClose={() => setEditVisible(false)}
+        onRefresh={fetchHistory}
+      />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   centerContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#fff',
+  },
+  headerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginRight: 16,
+  },
+  headerButtonText: {
+    fontSize: 12,
+    fontWeight: '800',
   },
   listContent: {
-    padding: 16,
+    paddingHorizontal: 24,
+    paddingTop: 8,
     paddingBottom: 40,
+    gap: 16,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    marginTop: 20,
+    paddingHorizontal: 4,
+  },
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+  },
+  sectionTotal: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  sectionTotalText: {
+    fontSize: 11,
+    fontWeight: '800',
   },
   sessionCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    padding: 20,
+    borderRadius: 24,
+    borderWidth: 1,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  dateBlock: {
-    width: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-    backgroundColor: '#f9fafb',
-    borderRadius: 12,
-    paddingVertical: 8,
-  },
-  dayText: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#111',
-  },
-  monthText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#666',
-  },
-  detailsBlock: {
+  sessionInfo: {
     flex: 1,
+    gap: 10,
   },
-  timeRow: {
+  timeHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
+    gap: 10,
   },
-  timeText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#111',
+  timeRange: {
+    fontSize: 16,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
-  durationBadge: {
-    backgroundColor: '#f3f4f6',
+  activeBadge: {
+    backgroundColor: '#10b981',
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderRadius: 6,
   },
-  ongoingBadge: {
-    backgroundColor: '#d1fae5',
-  },
-  durationText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#374151',
-    fontVariant: ['tabular-nums'],
+  activeBadgeText: {
+    fontSize: 8,
+    fontWeight: '900',
+    color: '#fff',
+    letterSpacing: 0.5,
   },
   metaRow: {
     flexDirection: 'row',
+    gap: 20,
+  },
+  metaItem: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
   },
-  metaText: {
-    fontSize: 12,
-    color: '#9ca3af',
+  metaLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
-  notesText: {
+  metaValue: {
     fontSize: 12,
-    color: '#9ca3af',
-    marginLeft: 8,
-    flex: 1,
+    fontWeight: '700',
+  },
+  notesPreview: {
+    fontSize: 13,
+    fontStyle: 'italic',
+    marginTop: 4,
+    paddingLeft: 10,
+    borderLeftWidth: 2,
+    lineHeight: 18,
   },
   emptyContainer: {
-    paddingVertical: 80,
+    paddingVertical: 120,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 16,
   },
   emptyText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#9ca3af',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

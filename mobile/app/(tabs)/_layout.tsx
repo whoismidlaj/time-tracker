@@ -1,28 +1,43 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { Clock, History, User } from 'lucide-react-native';
+import { useTheme } from '../../context/ThemeContext';
 
 export default function TabsLayout() {
+  const { colors, theme } = useTheme();
+
   return (
     <Tabs screenOptions={{
-      tabBarActiveTintColor: '#000',
-      tabBarInactiveTintColor: '#666',
+      tabBarActiveTintColor: colors.primary,
+      tabBarInactiveTintColor: colors.mutedForeground,
       tabBarStyle: {
+        backgroundColor: colors.background,
         borderTopWidth: 1,
-        borderTopColor: '#e5e7eb',
-        height: 60,
+        borderTopColor: colors.border,
+        height: 64,
         paddingBottom: 10,
-        paddingTop: 5,
+        paddingTop: 8,
+        elevation: 0,
+        shadowOpacity: 0,
+      },
+      headerStyle: {
+        backgroundColor: colors.background,
+        elevation: 0,
+        shadowOpacity: 0,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+      },
+      headerTitleStyle: {
+        fontWeight: '800',
+        color: colors.foreground,
+        fontSize: 18,
       },
       headerShown: true,
-      headerTitleStyle: {
-        fontWeight: '700',
-      },
     }}>
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Timer',
+          title: 'Dashboard',
           tabBarIcon: ({ color, size }) => <Clock size={size} color={color} />,
           headerTitle: 'TimeTrack',
         }}
