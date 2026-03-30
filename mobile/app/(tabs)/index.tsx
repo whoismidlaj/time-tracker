@@ -269,7 +269,7 @@ export default function TimerScreen() {
         >
           <View style={styles.header}>
             <View>
-              <Text style={[styles.greeting, { color: colors.mutedForeground }]}>Personal OS</Text>
+              <Text style={[styles.greeting, { color: colors.mutedForeground }]}>Time Tracker</Text>
               <Text style={[styles.title, { color: colors.foreground }]}>Tracker</Text>
             </View>
             {syncIndicator()}

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import * as SecureStore from 'expo-secure-store';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import SyncManager, { LocalStatus } from '../lib/SyncManager';
 import api from '../lib/api';
 
@@ -62,6 +63,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     await SecureStore.deleteItemAsync('userToken');
     await SecureStore.deleteItemAsync('userData');
+    await SyncManager.clearLocalStatus();
+    // Also sign out from Google if they used Google login
+    try { await GoogleSignin.signOut(); } catch (_) {}
     setIsAuth(false);
     setUser(null);
   };

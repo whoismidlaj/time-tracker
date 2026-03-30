@@ -9,11 +9,13 @@
     "newArchEnabled": true,
     "scheme": "time-track",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.whoismidlaj.timetrack"
     },
     "android": {
+      "package": "com.whoismidlaj.timetrack",
       "adaptiveIcon": {
-                "foregroundImage": "./assets/android-icon-foreground.png",
+        "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundColor": "#ffffff"
       }
     },
@@ -24,7 +26,8 @@
       "apiUrl": "https://timetracker.onlyfrens.fun/api"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "@react-native-google-signin/google-signin"
     ]
   }
 }
