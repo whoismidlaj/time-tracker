@@ -15,7 +15,7 @@ export async function POST(req) {
       return NextResponse.json({ error: "Missing token or password" }, { status: 400 });
     }
 
-    const user = await verifyResetToken(token);
+    const user = await verifyResetToken(token, new Date().toISOString());
     if (!user) {
       return NextResponse.json({ error: "Invalid or expired reset token." }, { status: 400 });
     }

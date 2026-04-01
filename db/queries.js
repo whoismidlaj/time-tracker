@@ -63,22 +63,15 @@ export async function createOAuthUser(email, displayName, avatarUrl) {
   return getUserById(res.rows[0].id);
 }
 
-export async function setResetToken(email, token, expiry) {
+export async function generateAndSetResetToken(email) {
+  const token = randomBytes(32).toString('hex');
+  const expiry = new Date(Date.now() + 3600000).toISOString(); // 1 hour
   const db = await getDb();
-  const res = await db.query(
+  await db.query(
     'UPDATE users SET reset_token = $1, reset_token_expiry = $2 WHERE email = $3',
     [token, expiry, email.toLowerCase()]
   );
-  return res.rowCount > 0;
-}
-
-export async function getUserByResetToken(token) {
-  const db = await getDb();
-  const res = await db.query(
-    'SELECT * FROM users WHERE reset_token = $1 AND reset_token_expiry > $2 LIMIT 1',
-    [token, new Date().toISOString()]
-  );
-  return res.rows[0];
+  return token;
 }
 
 export async function updatePassword(userId, newPassword) {
@@ -414,11 +407,12 @@ export async function deleteSupportTicket(id) {
 }
 
 /** PASSWORD RESET */
-export async function verifyResetToken(token) {
+export async function verifyResetToken(token, currentTime = null) {
+  const now = currentTime || new Date().toISOString();
   const db = await getDb();
   const res = await db.query(
-    'SELECT email FROM users WHERE reset_token = $1 AND reset_token_expiry > NOW()',
-    [token]
+    'SELECT email FROM users WHERE reset_token = $1 AND reset_token_expiry > $2',
+    [token, now]
   );
   return res.rows[0];
 }

@@ -11,9 +11,8 @@ export function AuthForm({ onAuthenticated }) {
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [resetToken, setResetToken] = useState('');
-  const [newPassword, setNewPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   async function handleCredentialsAuth(e) {
     e.preventDefault();
@@ -73,30 +72,10 @@ export function AuthForm({ onAuthenticated }) {
         body: JSON.stringify({ action: 'request', email }),
       });
       const data = await res.json();
-      toast({ title: 'Reset Initialized', description: data.message });
-      if (data.token) {
-        setResetToken(data.token);
-        setMode('complete-reset');
-      }
-    } catch (err) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleCompleteReset(e) {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const res = await fetch('/api/auth/reset', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'reset', token: resetToken, newPassword }),
-      });
-      if (!res.ok) throw new Error('Reset failed');
-      toast({ title: 'Success', description: 'Password updated. Please login.' });
-      setMode('login');
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      
+      setResetSent(true);
+      toast({ title: 'Email Sent', description: data.message });
     } catch (err) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
     } finally {
@@ -141,60 +120,33 @@ export function AuthForm({ onAuthenticated }) {
 
           <form onSubmit={
             mode === 'forgot' ? handleResetRequest : 
-            mode === 'complete-reset' ? handleCompleteReset : 
             handleCredentialsAuth
           } className="space-y-4">
             <div className="space-y-4">
-              {mode !== 'complete-reset' && (
-                <div className="space-y-1">
-                  <div className="relative">
-                    <Mail className="absolute left-3.5 top-3.5 h-4 w-4 text-muted-foreground" />
-                    <input
-                      type="email"
-                      placeholder="Email address"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                      className="w-full pl-11 pr-4 h-11 rounded-xl border border-border/60 bg-muted/20 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm font-medium"
-                    />
-                  </div>
+              <div className="space-y-1">
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-3.5 h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="email"
+                    placeholder="Email address"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    disabled={resetSent}
+                    className="w-full pl-11 pr-4 h-11 rounded-xl border border-border/60 bg-muted/20 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm font-medium disabled:opacity-50"
+                  />
                 </div>
-              )}
+              </div>
 
               {mode !== 'forgot' && (
-                <div className="space-y-1">
-                  <div className="relative">
-                    {mode === 'complete-reset' ? <KeyRound className="absolute left-3.5 top-3.5 h-4 w-4 text-muted-foreground" /> : <Lock className="absolute left-3.5 top-3.5 h-4 w-4 text-muted-foreground" />}
-                    <input
-                      type={mode === 'complete-reset' ? "text" : (showPassword ? "text" : "password")}
-                      placeholder={mode === 'complete-reset' ? "Enter Reset Token" : "Password"}
-                      value={mode === 'complete-reset' ? resetToken : password}
-                      onChange={(e) => mode === 'complete-reset' ? setResetToken(e.target.value) : setPassword(e.target.value)}
-                      required
-                      className="w-full pl-11 pr-12 h-11 rounded-xl border border-border/60 bg-muted/20 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm font-medium"
-                    />
-                    {mode !== 'complete-reset' && (
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3.5 top-3.5 text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {mode === 'complete-reset' && (
                 <div className="space-y-1">
                   <div className="relative">
                     <Lock className="absolute left-3.5 top-3.5 h-4 w-4 text-muted-foreground" />
                     <input
                       type={showPassword ? "text" : "password"}
-                      placeholder="New Password"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
                       required
                       className="w-full pl-11 pr-12 h-11 rounded-xl border border-border/60 bg-muted/20 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm font-medium"
                     />
@@ -206,6 +158,14 @@ export function AuthForm({ onAuthenticated }) {
                       {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
                   </div>
+                </div>
+              )}
+
+              {resetSent && (
+                <div className="bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-xl animate-in zoom-in-95 duration-300">
+                  <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest text-center leading-relaxed">
+                    Instructions Have Been Sent To Your Inbox. Refreshing To Home Soon.
+                  </p>
                 </div>
               )}
             </div>

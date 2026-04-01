@@ -47,7 +47,7 @@ async function ensureSchema() {
         display_name TEXT,
         avatar_url TEXT,
         reset_token TEXT,
-        reset_token_expiry TIMESTAMP,
+        reset_token_expiry TIMESTAMPTZ,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         role TEXT DEFAULT 'user',
         is_active BOOLEAN DEFAULT TRUE
@@ -96,7 +96,10 @@ async function ensureSchema() {
     
     if (res.rowCount === 0) {
       await client.query(`ALTER TABLE users ADD COLUMN reset_token TEXT`);
-      await client.query(`ALTER TABLE users ADD COLUMN reset_token_expiry TIMESTAMP`);
+      await client.query(`ALTER TABLE users ADD COLUMN reset_token_expiry TIMESTAMPTZ`);
+    } else {
+      // Migration to switch existing column to TIMESTAMPTZ
+      await client.query(`ALTER TABLE users ALTER COLUMN reset_token_expiry TYPE TIMESTAMPTZ USING reset_token_expiry AT TIME ZONE 'UTC'`);
     }
 
     const roleRes = await client.query(`
