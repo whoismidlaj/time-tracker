@@ -387,3 +387,47 @@ export async function getUsersMetrics() {
   const res = await db.query(query);
   return res.rows;
 }
+
+/** SUPPORT TICKETS */
+export async function createSupportTicket(userId, subject, message) {
+  const db = await getDb();
+  await db.query(
+    'INSERT INTO support_tickets (user_id, subject, message) VALUES ($1, $2, $3)',
+    [userId, subject, message]
+  );
+}
+
+export async function getSupportTickets() {
+  const db = await getDb();
+  const res = await db.query(`
+    SELECT t.*, u.email, u.display_name 
+    FROM support_tickets t
+    JOIN users u ON t.user_id = u.id
+    ORDER BY t.created_at DESC
+  `);
+  return res.rows;
+}
+
+export async function deleteSupportTicket(id) {
+  const db = await getDb();
+  await db.query('DELETE FROM support_tickets WHERE id = $1', [id]);
+}
+
+/** PASSWORD RESET */
+export async function verifyResetToken(token) {
+  const db = await getDb();
+  const res = await db.query(
+    'SELECT email FROM users WHERE reset_token = $1 AND reset_token_expiry > NOW()',
+    [token]
+  );
+  return res.rows[0];
+}
+
+export async function updatePasswordWithToken(token, newHash) {
+  const db = await getDb();
+  await db.query(
+    'UPDATE users SET password_hash = $1, reset_token = NULL, reset_token_expiry = NULL WHERE reset_token = $2',
+    [newHash, token]
+  );
+}
+

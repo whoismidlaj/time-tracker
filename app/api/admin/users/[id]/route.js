@@ -36,7 +36,7 @@ export async function POST(req, { params }) {
     const expiry = new Date(Date.now() + 3600000).toISOString(); // 1 hour
     await setResetToken(user.email, token, expiry);
 
-    const resetUrl = `${process.env.NEXTAUTH_URL}/reset-password?token=${token}`;
+    const resetUrl = `${process.env.NEXTAUTH_URL}/auth/reset-password?token=${token}`;
     
     await sendEmail({
       to: user.email,

@@ -22,7 +22,10 @@ import {
   Info as InfoIcon,
   MessageSquare,
   Eye,
-  EyeOff
+  EyeOff,
+  Trash2,
+  CheckCircle,
+  Inbox
 } from "lucide-react";
 import { formatDate, formatTime } from "../../lib/utils.js";
 import { toast } from "../../lib/use-toast.js";
@@ -42,15 +45,23 @@ export default function AdminDashboard() {
     support_email: "",
     app_info: ""
   });
+  const [tickets, setTickets] = useState([]);
   const [showSmtpPassword, setShowSmtpPassword] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [isInitialSettingsLoaded, setIsInitialSettingsLoaded] = useState(false);
 
-  const fetchData = async () => {
+  const fetchUsers = async () => {
     try {
       const res = await fetch('/api/admin/users');
       const data = await res.json();
       setUsers(data.users || []);
+    } catch (err) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  };
 
+  const fetchSettings = async () => {
+    try {
       const settingsRes = await fetch('/api/admin/settings');
       const settingsData = await settingsRes.json();
       if (settingsData.settings) {
@@ -59,12 +70,31 @@ export default function AdminDashboard() {
           support_email: settingsData.settings.support_email || "",
           app_info: settingsData.settings.app_info || ""
         });
+        setIsInitialSettingsLoaded(true);
       }
     } catch (err) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally {
-      setLoading(false);
     }
+  };
+
+  const fetchTickets = async () => {
+    try {
+      const res = await fetch('/api/admin/support');
+      const data = await res.json();
+      setTickets(data.tickets || []);
+    } catch (err) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const fetchData = async () => {
+    setLoading(true);
+    await Promise.all([
+      fetchUsers(),
+      !isInitialSettingsLoaded ? fetchSettings() : Promise.resolve(),
+      activeTab === "support" ? fetchTickets() : Promise.resolve()
+    ]);
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -99,6 +129,18 @@ export default function AdminDashboard() {
       toast({ title: "Reset Sent", description: "Password reset link has been emailed." });
     } catch (err) {
       toast({ title: "Mailing Failed", description: "Ensure SMTP is configured in settings.", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteTicket = async (id) => {
+    if (!confirm("Delete this support ticket?")) return;
+    try {
+      const res = await fetch(`/api/admin/support?id=${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error("Failed to delete ticket");
+      toast({ title: "Ticket Deleted", variant: "success" });
+      fetchTickets();
+    } catch (err) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
     }
   };
 
@@ -170,6 +212,12 @@ export default function AdminDashboard() {
                   className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'settings' ? 'bg-background text-primary shadow-sm border border-border/60' : 'text-muted-foreground hover:text-foreground'}`}
                 >
                   System Settings
+                </button>
+                <button 
+                  onClick={() => setActiveTab("support")}
+                  className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'support' ? 'bg-background text-primary shadow-sm border border-border/60' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                  Support Tickets
                 </button>
              </nav>
              <button onClick={() => signOut()} className="p-2 rounded-xl border border-border/60 hover:bg-destructive/10 hover:text-destructive transition-all">
@@ -335,7 +383,7 @@ export default function AdminDashboard() {
                </div>
             </div>
           </div>
-        ) : (
+        ) : activeTab === "settings" ? (
           <div className="max-w-4xl mx-auto space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
              <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                 {/* SMTP Config */}
@@ -462,7 +510,63 @@ export default function AdminDashboard() {
                 </div>
              </div>
           </div>
-        )}
+        ) : activeTab === "support" ? (
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-2 px-2">
+                <div>
+                   <h2 className="text-lg font-bold font-display uppercase tracking-widest flex items-center gap-3">
+                      <Inbox className="text-primary" size={20} /> Support Inquiries
+                   </h2>
+                   <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mt-1">Manage user support tickets stored in database</p>
+                </div>
+             </div>
+
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {tickets.map((ticket) => (
+                   <div key={ticket.id} className="bg-card p-8 rounded-[2.5rem] border border-border/60 shadow-sm relative group overflow-hidden">
+                      <div className="flex items-start justify-between mb-6">
+                         <div className="space-y-1">
+                            <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">Ticket #{ticket.id}</p>
+                            <h3 className="text-sm font-black tracking-tight">{ticket.subject}</h3>
+                         </div>
+                         <button 
+                            onClick={() => handleDeleteTicket(ticket.id)}
+                            className="p-2.5 rounded-xl border border-destructive/10 text-destructive/40 hover:text-destructive hover:bg-destructive/5 transition-all opacity-0 group-hover:opacity-100"
+                         >
+                            <Trash2 size={16} />
+                         </button>
+                      </div>
+                      
+                      <div className="bg-muted/30 p-5 rounded-2xl mb-6 min-h-[100px]">
+                         <p className="text-xs text-foreground/80 leading-relaxed font-medium whitespace-pre-wrap">{ticket.message}</p>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-4 border-t border-border/40">
+                         <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-xl bg-primary/5 border border-primary/10 flex items-center justify-center text-[10px] font-black text-primary">
+                               {ticket.display_name?.charAt(0) || ticket.email.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="flex flex-col">
+                               <span className="text-[10px] font-black tracking-tight">{ticket.display_name || 'User'}</span>
+                               <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-tighter">{ticket.email}</span>
+                            </div>
+                         </div>
+                         <div className="text-right">
+                            <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest">{formatDate(ticket.created_at)}</p>
+                            <p className="text-[8px] text-muted-foreground/60 font-black uppercase tracking-tighter mt-0.5">{formatTime(ticket.created_at)}</p>
+                         </div>
+                      </div>
+                   </div>
+                ))}
+                {tickets.length === 0 && (
+                   <div className="col-span-full py-32 text-center bg-card rounded-[2.5rem] border border-dashed border-border/60">
+                      <Inbox size={48} className="mx-auto text-muted/20 mb-4" />
+                      <p className="text-muted-foreground font-black uppercase tracking-[0.2em] text-xs">Inbox is clean. No open inquiries.</p>
+                   </div>
+                )}
+             </div>
+          </div>
+        ) : null}
       </main>
     </div>
   );
