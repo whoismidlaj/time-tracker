@@ -145,7 +145,10 @@ export function StatusCard({ status, session, activeBreak, breaks = [], elapsed,
 
                       <div className="space-y-4">
                         <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest ml-1">Time</label>
+                          <div className="flex items-center justify-between px-1">
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Time</label>
+                            <span className="text-[9px] font-bold text-primary/60">{formatTimeString(tempStartTime)}</span>
+                          </div>
                           <input
                             type="time"
                             value={tempStartTime}

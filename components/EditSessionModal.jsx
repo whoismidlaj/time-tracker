@@ -4,7 +4,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { X, Calendar, Clock, Loader2, Save, Trash2, Coffee, Ban, Calculator } from "lucide-react";
 import { Button } from "./ui/button.jsx";
 import { toast } from "../lib/use-toast.js";
-import { parseLocalToUTC } from "../lib/utils.js";
+import { parseLocalToUTC, formatTimeString } from "../lib/utils.js";
 import { getTimezone } from "../lib/config.js";
 
 export function EditSessionModal({ session: initialSession, open, onOpenChange, onRefresh }) {
@@ -187,9 +187,12 @@ export function EditSessionModal({ session: initialSession, open, onOpenChange, 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-4">
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider ml-1 flex items-center gap-1.5">
-                  <Clock className="h-3 w-3" /> Punch In
-                </label>
+                <div className="flex items-center justify-between px-1">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                    <Clock className="h-3 w-3" /> Punch In
+                  </label>
+                  <span className="text-[9px] font-bold text-primary/60">{formatTimeString(punchIn.split("T")[1]?.slice(0, 5))}</span>
+                </div>
                 <input
                   type="datetime-local"
                   value={punchIn}
@@ -200,9 +203,12 @@ export function EditSessionModal({ session: initialSession, open, onOpenChange, 
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider ml-1 flex items-center gap-1.5">
-                  <Clock className="h-3 w-3" /> Punch Out
-                </label>
+                <div className="flex items-center justify-between px-1">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                    <Clock className="h-3 w-3" /> Punch Out
+                  </label>
+                  <span className="text-[9px] font-bold text-primary/60">{punchOut ? formatTimeString(punchOut.split("T")[1]?.slice(0, 5)) : "--"}</span>
+                </div>
                 <input
                   type="datetime-local"
                   value={punchOut}
@@ -254,7 +260,10 @@ export function EditSessionModal({ session: initialSession, open, onOpenChange, 
                     }`}>
                       <div className="grid grid-cols-[1fr_1fr_40px] gap-2 flex-1 items-end">
                         <div className="space-y-0.5">
-                           <p className="text-[8px] text-muted-foreground uppercase font-bold ml-1">Start</p>
+                           <div className="flex items-center justify-between px-1">
+                             <p className="text-[8px] text-muted-foreground uppercase font-bold">Start</p>
+                             <span className="text-[7px] font-bold text-primary/50">{formatTimeString(brk.break_start)}</span>
+                           </div>
                            <input
                             type="time"
                             value={brk.break_start || ""}
@@ -269,7 +278,10 @@ export function EditSessionModal({ session: initialSession, open, onOpenChange, 
                           />
                         </div>
                         <div className="space-y-0.5">
-                           <p className="text-[8px] text-muted-foreground uppercase font-bold ml-1">End</p>
+                           <div className="flex items-center justify-between px-1">
+                             <p className="text-[8px] text-muted-foreground uppercase font-bold">End</p>
+                             <span className="text-[7px] font-bold text-primary/50">{formatTimeString(brk.break_end)}</span>
+                           </div>
                            <input
                             type="time"
                             value={brk.break_end || ""}
