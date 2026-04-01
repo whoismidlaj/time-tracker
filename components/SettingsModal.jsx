@@ -3,6 +3,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { X, Settings, Sparkles, Globe } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle.jsx";
 import { getTimezone, DEFAULT_TIMEZONE, getOfficeStartTime, getOfficeEndTime, getBreakHours } from "../lib/config.js";
+import { formatTimeString } from "../lib/utils.js";
 
 export function SettingsModal() {
   const [tz, setTz] = useState(getTimezone());
@@ -85,7 +86,10 @@ export function SettingsModal() {
               <div className="space-y-2">
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
-                    <label className="text-[9px] text-muted-foreground font-bold uppercase ml-1">Office Start</label>
+                    <div className="flex items-center justify-between px-1">
+                      <label className="text-[9px] text-muted-foreground font-bold uppercase">Office Start</label>
+                      <span className="text-[8px] font-bold text-primary/60">{formatTimeString(startTime)}</span>
+                    </div>
                     <input 
                       type="time" 
                       value={startTime}
@@ -94,7 +98,10 @@ export function SettingsModal() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[9px] text-muted-foreground font-bold uppercase ml-1">Office End</label>
+                    <div className="flex items-center justify-between px-1">
+                      <label className="text-[9px] text-muted-foreground font-bold uppercase">Office End</label>
+                      <span className="text-[8px] font-bold text-primary/60">{formatTimeString(endTime)}</span>
+                    </div>
                     <input 
                       type="time" 
                       value={endTime}

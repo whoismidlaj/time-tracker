@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Badge } from "./ui/badge.jsx";
 import * as Dialog from "@radix-ui/react-dialog";
-import { formatDuration, formatShortDuration, formatTime, calcTotalBreakMs, calcSessionDurationMs, parseLocalToUTC, calcExitTime } from "../lib/utils.js";
+import { formatDuration, formatShortDuration, formatTime, formatTimeString, calcTotalBreakMs, calcSessionDurationMs, parseLocalToUTC, calcExitTime } from "../lib/utils.js";
 import { getTimezone, getOfficeStartTime, getOfficeEndTime, getBreakHours } from "../lib/config.js";
 import { MessageSquare, Save, Loader2, Pencil, Check, X, LogOut, Clock as ClockIcon } from "lucide-react";
 
@@ -250,7 +250,7 @@ export function StatusCard({ status, session, activeBreak, breaks = [], elapsed,
                 <div className="text-right">
                    <p className="text-[8px] text-muted-foreground font-medium mb-0.5">Total Stay</p>
                    <p className="text-[10px] font-bold text-primary/80 font-mono">
-                    {getOfficeStartTime()} - {getOfficeEndTime()} Rule
+                    {formatTimeString(getOfficeStartTime())} - {formatTimeString(getOfficeEndTime())} Rule
                    </p>
                 </div>
               </div>
