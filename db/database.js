@@ -73,6 +73,7 @@ async function ensureSchema() {
         session_id INTEGER NOT NULL,
         break_start TIMESTAMPTZ NOT NULL,
         break_end TIMESTAMPTZ,
+        is_ignored BOOLEAN DEFAULT FALSE,
         CONSTRAINT fk_session FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
       );
 
@@ -100,6 +101,15 @@ async function ensureSchema() {
     } else {
       // Migration to switch existing column to TIMESTAMPTZ
       await client.query(`ALTER TABLE users ALTER COLUMN reset_token_expiry TYPE TIMESTAMPTZ USING reset_token_expiry AT TIME ZONE 'UTC'`);
+    }
+
+    const breakCols = await client.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'breaks' AND column_name = 'is_ignored'
+    `);
+    if (breakCols.rowCount === 0) {
+      await client.query(`ALTER TABLE breaks ADD COLUMN is_ignored BOOLEAN DEFAULT FALSE`);
     }
 
     const roleRes = await client.query(`

@@ -254,8 +254,8 @@ export async function syncSessionBreaks(sessionId, userId, breaks) {
     for (const b of breaks) {
       if (!b.break_start) continue;
       await client.query(
-        'INSERT INTO breaks (session_id, break_start, break_end) VALUES ($1, $2, $3)',
-        [sessionId, b.break_start, b.break_end]
+        'INSERT INTO breaks (session_id, break_start, break_end, is_ignored) VALUES ($1, $2, $3, $4)',
+        [sessionId, b.break_start, b.break_end, b.is_ignored || false]
       );
     }
     await client.query('COMMIT');

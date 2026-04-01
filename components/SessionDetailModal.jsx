@@ -103,15 +103,24 @@ export function SessionDetailModal({ session, open, onOpenChange, onEdit }) {
                   const duration = end ? end.getTime() - start.getTime() : null;
 
                   return (
-                    <div key={idx} className="flex items-center justify-between p-2.5 rounded-lg border border-border/40 bg-background shadow-sm">
+                    <div key={idx} className={`flex items-center justify-between p-2.5 rounded-lg border shadow-sm transition-all ${
+                      brk.is_ignored ? "opacity-60 bg-amber-500/5 border-amber-500/20" : "bg-background border-border/40"
+                    }`}>
                       <div className="flex items-center gap-2">
-                         <span className="text-[10px] font-mono text-foreground/70">{formatTime(brk.break_start)}</span>
+                         <span className={`text-[10px] font-mono ${brk.is_ignored ? "text-muted-foreground line-through" : "text-foreground/70"}`}>
+                          {formatTime(brk.break_start)}
+                         </span>
                          <ArrowRight className="h-2.5 w-2.5 text-muted-foreground/40" />
-                         <span className="text-[10px] font-mono text-foreground/70">
+                         <span className={`text-[10px] font-mono ${brk.is_ignored ? "text-muted-foreground line-through" : "text-foreground/70"}`}>
                           {brk.break_end ? formatTime(brk.break_end) : "Active"}
                          </span>
+                         {brk.is_ignored && (
+                           <span className="text-[8px] font-bold uppercase tracking-tighter bg-amber-500/20 text-amber-600 px-1.5 py-px rounded">Ignored</span>
+                         )}
                       </div>
-                      <span className="text-[10px] font-bold font-mono text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full">
+                      <span className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded-full ${
+                        brk.is_ignored ? "text-muted-foreground bg-muted/50 line-through" : "text-amber-500 bg-amber-500/10"
+                      }`}>
                         {duration !== null ? formatShortDuration(duration) : "..."}
                       </span>
                     </div>

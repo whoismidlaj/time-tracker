@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { X, Calendar, Clock, Loader2, Save, Trash2, Coffee } from "lucide-react";
+import { X, Calendar, Clock, Loader2, Save, Trash2, Coffee, Ban, Calculator } from "lucide-react";
 import { Button } from "./ui/button.jsx";
 import { toast } from "../lib/use-toast.js";
 import { parseLocalToUTC } from "../lib/utils.js";
@@ -47,7 +47,8 @@ export function EditSessionModal({ session: initialSession, open, onOpenChange, 
         return {
           ...b,
           break_start: start.split("T")[1] || "",
-          break_end: end.split("T")[1] || ""
+          break_end: end.split("T")[1] || "",
+          is_ignored: !!b.is_ignored
         };
       }));
     } else {
@@ -112,7 +113,8 @@ export function EditSessionModal({ session: initialSession, open, onOpenChange, 
 
         return {
           break_start: bStartUTC,
-          break_end: bEndUTC
+          break_end: bEndUTC,
+          is_ignored: !!b.is_ignored
         };
       });
 
@@ -238,7 +240,7 @@ export function EditSessionModal({ session: initialSession, open, onOpenChange, 
                       const h = String(now.getHours()).padStart(2, '0');
                       const m = String(now.getMinutes()).padStart(2, '0');
                       const nowTime = `${h}:${m}`;
-                      setBreaks([...breaks, { break_start: nowTime, break_end: "" }]);
+                      setBreaks([...breaks, { break_start: nowTime, break_end: "", is_ignored: false }]);
                     }}
                   >
                     Add Break
@@ -247,8 +249,10 @@ export function EditSessionModal({ session: initialSession, open, onOpenChange, 
                 
                 <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1 custom-scrollbar">
                   {breaks.map((brk, idx) => (
-                    <div key={idx} className="flex items-center gap-2 bg-muted/30 p-2 rounded-lg border border-border/40 group">
-                      <div className="grid grid-cols-2 gap-2 flex-1">
+                    <div key={idx} className={`flex items-center gap-2 bg-muted/30 p-2 rounded-lg border transition-all ${
+                      brk.is_ignored ? "border-amber-500/20 bg-amber-500/5 opacity-60" : "border-border/40"
+                    }`}>
+                      <div className="grid grid-cols-[1fr_1fr_40px] gap-2 flex-1 items-end">
                         <div className="space-y-0.5">
                            <p className="text-[8px] text-muted-foreground uppercase font-bold ml-1">Start</p>
                            <input
@@ -259,7 +263,9 @@ export function EditSessionModal({ session: initialSession, open, onOpenChange, 
                               newBreaks[idx].break_start = e.target.value;
                               setBreaks(newBreaks);
                             }}
-                            className="bg-background border border-border/40 rounded px-1.5 py-0.5 text-[10px] font-bold outline-none w-full"
+                            className={`bg-background border border-border/40 rounded px-1.5 py-0.5 text-[10px] font-bold outline-none w-full ${
+                              brk.is_ignored ? "line-through text-muted-foreground" : ""
+                            }`}
                           />
                         </div>
                         <div className="space-y-0.5">
@@ -272,14 +278,33 @@ export function EditSessionModal({ session: initialSession, open, onOpenChange, 
                               newBreaks[idx].break_end = e.target.value;
                               setBreaks(newBreaks);
                             }}
-                            className="bg-background border border-border/40 rounded px-1.5 py-0.5 text-[10px] font-bold outline-none w-full"
+                            className={`bg-background border border-border/40 rounded px-1.5 py-0.5 text-[10px] font-bold outline-none w-full ${
+                              brk.is_ignored ? "line-through text-muted-foreground" : ""
+                            }`}
                           />
+                        </div>
+                        <div className="space-y-0.5">
+                          <p className="text-[8px] text-muted-foreground uppercase font-bold text-center">Calc</p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newBreaks = [...breaks];
+                              newBreaks[idx].is_ignored = !newBreaks[idx].is_ignored;
+                              setBreaks(newBreaks);
+                            }}
+                            title={brk.is_ignored ? "Ignored (Click to enable)" : "Enabled (Click to ignore)"}
+                            className={`w-full h-[22px] flex items-center justify-center rounded transition-colors ${
+                              brk.is_ignored ? "bg-amber-500/20 text-amber-600" : "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20"
+                            }`}
+                          >
+                            {brk.is_ignored ? <Ban className="h-3 w-3" /> : <Calculator className="h-3 w-3" />}
+                          </button>
                         </div>
                       </div>
                       <button
                         type="button"
                         onClick={() => setBreaks(breaks.filter((_, i) => i !== idx))}
-                        className="text-muted-foreground hover:text-destructive p-1 rounded transition-colors"
+                        className="text-muted-foreground hover:text-destructive p-1 rounded transition-colors group-hover:block"
                       >
                         <Trash2 className="h-3 w-3" />
                       </button>
