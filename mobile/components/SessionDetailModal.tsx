@@ -1,6 +1,7 @@
-import React from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, SafeAreaView } from 'react-native';
-import { X, Clock, Coffee, Pencil, Calendar, ArrowRight } from 'lucide-react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, SafeAreaView, Alert, ActivityIndicator } from 'react-native';
+import { X, Clock, Coffee, Pencil, Calendar, ArrowRight, Trash2 } from 'lucide-react-native';
+import api from '../lib/api';
 import { useTheme } from '../context/ThemeContext';
 import { 
   formatTime, 
@@ -15,10 +16,12 @@ interface SessionDetailModalProps {
   visible: boolean;
   onClose: () => void;
   onEdit: (session: any) => void;
+  onRefresh?: () => void;
 }
 
-export default function SessionDetailModal({ session, visible, onClose, onEdit }: SessionDetailModalProps) {
+export default function SessionDetailModal({ session, visible, onClose, onEdit, onRefresh }: SessionDetailModalProps) {
   const { colors, theme } = useTheme();
+  const [deleting, setDeleting] = useState(false);
 
   if (!session) return null;
 
@@ -26,6 +29,32 @@ export default function SessionDetailModal({ session, visible, onClose, onEdit }
   const totalBreakMs = calcTotalBreakMs(breaks);
   const workedMs = session.punch_out_time ? calcSessionDurationMs(session, breaks) : null;
   const isActive = !session.punch_out_time;
+
+  const handleDelete = async () => {
+    Alert.alert(
+      "Delete Session",
+      "Are you sure you want to permanently delete this session?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Delete", 
+          style: "destructive", 
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              await api.delete(`/session/${session.id}`);
+              onRefresh?.();
+              onClose();
+            } catch (err) {
+              Alert.alert("Error", "Failed to delete session");
+            } finally {
+              setDeleting(false);
+            }
+          }
+        }
+      ]
+    );
+  };
 
   return (
     <Modal
@@ -139,14 +168,24 @@ export default function SessionDetailModal({ session, visible, onClose, onEdit }
               </View>
             </View>
 
-            <TouchableOpacity 
-              style={[styles.editButton, { backgroundColor: colors.foreground }]} 
-              onPress={() => onEdit(session)}
-              activeOpacity={0.8}
-            >
-              <Pencil size={18} color={colors.background} />
-              <Text style={[styles.editButtonText, { color: colors.background }]}>Edit Session</Text>
-            </TouchableOpacity>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity 
+                style={[styles.deleteButton, { backgroundColor: colors.destructive + '15' }]} 
+                onPress={handleDelete}
+                disabled={deleting}
+              >
+                {deleting ? <ActivityIndicator size="small" color={colors.destructive} /> : <Trash2 size={20} color={colors.destructive} />}
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.editButton, { backgroundColor: colors.foreground, flex: 1 }]} 
+                onPress={() => onEdit(session)}
+                activeOpacity={0.8}
+                disabled={deleting}
+              >
+                <Pencil size={18} color={colors.background} />
+                <Text style={[styles.editButtonText, { color: colors.background }]}>Edit Session</Text>
+              </TouchableOpacity>
+            </View>
           </ScrollView>
         </SafeAreaView>
       </View>
@@ -346,5 +385,17 @@ const styles = StyleSheet.create({
   editButtonText: {
     fontSize: 16,
     fontWeight: '700',
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  deleteButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

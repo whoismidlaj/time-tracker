@@ -39,7 +39,7 @@ export async function POST(request) {
         name: dbUser.display_name,
       },
       secret,
-      { expiresIn: '30d' }
+      { expiresIn: '365d' }
     );
 
     return Response.json({

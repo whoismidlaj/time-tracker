@@ -2,11 +2,15 @@
 import { useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Avatar from "@radix-ui/react-avatar";
-import { LogOut, User, Settings, Info } from "lucide-react";
+import { LogOut, User, Settings, Info, MessageSquare } from "lucide-react";
 import { ProfileModal } from "./ProfileModal.jsx";
+import { AppInfoModal } from "./AppInfoModal.jsx";
+import { SupportModal } from "./SupportModal.jsx";
 
 export function UserNav({ user, onLogout, onUpdate }) {
   const [profileOpen, setProfileOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
   
   const initials = user.display_name 
     ? user.display_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
@@ -46,12 +50,23 @@ export function UserNav({ user, onLogout, onUpdate }) {
             </DropdownMenu.Item>
             
             <DropdownMenu.Item 
+              onClick={() => setInfoOpen(true)}
               className="relative flex cursor-default select-none items-center rounded-lg px-2.5 py-2 text-[11px] font-bold ml-1 outline-none transition-all focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 gap-2.5 group"
             >
               <div className="w-6 h-6 rounded-md bg-muted flex items-center justify-center group-focus:bg-muted-foreground/10 transition-colors">
                 <Info className="h-3 w-3 text-muted-foreground" />
               </div>
               App Info
+            </DropdownMenu.Item>
+
+            <DropdownMenu.Item 
+              onClick={() => setSupportOpen(true)}
+              className="relative flex cursor-default select-none items-center rounded-lg px-2.5 py-2 text-[11px] font-bold ml-1 outline-none transition-all focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 gap-2.5 group"
+            >
+              <div className="w-6 h-6 rounded-md bg-muted flex items-center justify-center group-focus:bg-muted-foreground/10 transition-colors">
+                <MessageSquare className="h-3 w-3 text-muted-foreground" />
+              </div>
+              Contact Support
             </DropdownMenu.Item>
             
             <DropdownMenu.Separator className="my-2 h-px bg-border/50" />
@@ -74,6 +89,15 @@ export function UserNav({ user, onLogout, onUpdate }) {
         onUpdate={onUpdate} 
         open={profileOpen} 
         onOpenChange={setProfileOpen} 
+      />
+      <AppInfoModal 
+        open={infoOpen} 
+        onOpenChange={setInfoOpen} 
+      />
+
+      <SupportModal 
+        open={supportOpen} 
+        onOpenChange={setSupportOpen} 
       />
     </>
   );

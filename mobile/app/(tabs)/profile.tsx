@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Alert, ScrollView, TextInput, Switch, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Alert, ScrollView, Switch, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Picker } from '@react-native-picker/picker';
 import { useRouter, Stack } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import { LogOut, User, Mail, Shield, Clock, Coffee, Globe, Save, Moon, Sun, ChevronRight } from 'lucide-react-native';
+import { LogOut, User, Mail, Shield, Clock, Coffee, Globe, Save, Moon, Sun, ChevronRight, RefreshCw } from 'lucide-react-native';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import SyncManager from '../../lib/SyncManager';
 
 const DEFAULT_SETTINGS = {
   timezone: "Asia/Kolkata",
@@ -39,6 +43,25 @@ export default function ProfileScreen() {
           style: 'destructive',
           onPress: async () => {
             await signOut();
+          }
+        },
+      ]
+    );
+  };
+
+  const clearSyncCache = async () => {
+    Alert.alert(
+      'Clear Cache',
+      'This will delete pending offline actions. Use this only if sync is permanently stuck.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Clear Cache', 
+          style: 'destructive',
+          onPress: async () => {
+            await SyncManager.clearQueue();
+            await SyncManager.clearLocalStatus();
+            Alert.alert('Success', 'Cache cleared. App will sync fresh data.');
           }
         },
       ]
@@ -96,40 +119,51 @@ export default function ProfileScreen() {
         <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>OFFICE SETTINGS</Text>
           
-          <SettingInput
+          <SettingTimePicker
             icon={<Clock size={18} color={colors.mutedForeground} />}
             label="Start Time"
-            value={settings.startTime}
+            timeValue={settings.startTime}
             onChange={(v: string) => setSettings({ ...settings, startTime: v })}
-            placeholder="09:30"
             colors={colors}
           />
 
-          <SettingInput
+          <SettingTimePicker
             icon={<LogOut size={18} color={colors.mutedForeground} />}
             label="End Time"
-            value={settings.endTime}
+            timeValue={settings.endTime}
             onChange={(v: string) => setSettings({ ...settings, endTime: v })}
-            placeholder="18:30"
             colors={colors}
           />
 
-          <SettingInput
+          <SettingPicker
             icon={<Coffee size={18} color={colors.mutedForeground} />}
             label="Break Hours"
-            value={settings.breakHours}
-            onChange={(v: string) => setSettings({ ...settings, breakHours: v })}
-            keyboardType="numeric"
-            placeholder="1"
+            selectedValue={settings.breakHours}
+            onValueChange={(v: string) => setSettings({ ...settings, breakHours: v })}
+            options={[
+              { label: '0 Hours', value: '0' },
+              { label: '0.5 Hours', value: '0.5' },
+              { label: '1 Hour', value: '1' },
+              { label: '1.5 Hours', value: '1.5' },
+              { label: '2 Hours', value: '2' },
+            ]}
             colors={colors}
           />
 
-          <SettingInput
+          <SettingPicker
             icon={<Globe size={18} color={colors.mutedForeground} />}
             label="Timezone"
-            value={settings.timezone}
-            onChange={(v: string) => setSettings({ ...settings, timezone: v })}
-            placeholder="Asia/Kolkata"
+            selectedValue={settings.timezone}
+            onValueChange={(v: string) => setSettings({ ...settings, timezone: v })}
+            options={[
+              { label: 'Asia/Kolkata', value: 'Asia/Kolkata' },
+              { label: 'America/New_York', value: 'America/New_York' },
+              { label: 'America/Los_Angeles', value: 'America/Los_Angeles' },
+              { label: 'Europe/London', value: 'Europe/London' },
+              { label: 'Europe/Paris', value: 'Europe/Paris' },
+              { label: 'Australia/Sydney', value: 'Australia/Sydney' },
+              { label: 'UTC', value: 'UTC' }
+            ]}
             colors={colors}
           />
 
@@ -162,6 +196,14 @@ export default function ProfileScreen() {
           <LogOut size={20} color={colors.destructive} />
           <Text style={[styles.logoutText, { color: colors.destructive }]}>Sign Out</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={[styles.logoutButton, { backgroundColor: colors.muted, borderColor: colors.border, marginTop: 12 }]} 
+          onPress={clearSyncCache}
+        >
+          <RefreshCw size={20} color={colors.foreground} />
+          <Text style={[styles.logoutText, { color: colors.foreground }]}>Reset Local Cache</Text>
+        </TouchableOpacity>
         
         <Text style={[styles.versionText, { color: colors.mutedForeground }]}>TimeTrack Mobile v1.5.0</Text>
       </ScrollView>
@@ -169,7 +211,28 @@ export default function ProfileScreen() {
   );
 }
 
-function SettingInput({ icon, label, value, onChange, placeholder, keyboardType, colors }: any) {
+function SettingTimePicker({ icon, label, timeValue, onChange, colors }: any) {
+  const [show, setShow] = useState(false);
+
+  // Convert "HH:mm" to Date object
+  const timeParts = timeValue.split(':');
+  const dateObj = new Date();
+  dateObj.setHours(parseInt(timeParts[0] || '9', 10));
+  dateObj.setMinutes(parseInt(timeParts[1] || '0', 10));
+
+  const handleDateChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') setShow(false);
+    if (selectedDate) {
+      const hh = selectedDate.getHours().toString().padStart(2, '0');
+      const mm = selectedDate.getMinutes().toString().padStart(2, '0');
+      onChange(`${hh}:${mm}`);
+    }
+  };
+
+  const handleDismiss = () => {
+    setShow(false);
+  };
+
   return (
     <View style={styles.settingItem}>
       <View style={styles.settingInfo}>
@@ -178,14 +241,48 @@ function SettingInput({ icon, label, value, onChange, placeholder, keyboardType,
         </View>
         <Text style={[styles.settingLabel, { color: colors.foreground }]}>{label}</Text>
       </View>
-      <TextInput
-        style={[styles.settingInput, { backgroundColor: colors.muted, color: colors.foreground, borderColor: colors.border }]}
-        value={value}
-        onChangeText={(v: string) => onChange(v)}
-        placeholder={placeholder}
-        placeholderTextColor={colors.mutedForeground + '60'}
-        keyboardType={keyboardType}
-      />
+      <TouchableOpacity 
+        style={[styles.settingInput, { backgroundColor: colors.muted, borderColor: colors.border, justifyContent: 'center' }]}
+        onPress={() => setShow(true)}
+      >
+        <Text style={{ color: colors.foreground, fontWeight: '600' }}>{timeValue}</Text>
+      </TouchableOpacity>
+      
+      {show && (
+        <DateTimePicker
+          value={dateObj}
+          mode="time"
+          is24Hour={true}
+          display="default"
+          onValueChange={handleDateChange}
+          onDismiss={handleDismiss}
+        />
+      )}
+    </View>
+  );
+}
+
+function SettingPicker({ icon, label, selectedValue, onValueChange, options, colors }: any) {
+  return (
+    <View style={styles.settingItem}>
+      <View style={styles.settingInfo}>
+        <View style={[styles.iconBox, { backgroundColor: colors.muted }]}>
+          {icon}
+        </View>
+        <Text style={[styles.settingLabel, { color: colors.foreground }]}>{label}</Text>
+      </View>
+      <View style={[styles.settingInput, { backgroundColor: colors.muted, borderColor: colors.border, paddingHorizontal: 0 }]}>
+        <Picker
+          selectedValue={selectedValue}
+          onValueChange={onValueChange}
+          style={{ flex: 1, color: colors.foreground, height: 48, marginTop: -4 }}
+          dropdownIconColor={colors.mutedForeground}
+        >
+          {options.map((opt: any) => (
+            <Picker.Item key={opt.value} label={opt.label} value={opt.value} style={{ fontSize: 13 }} />
+          ))}
+        </Picker>
+      </View>
     </View>
   );
 }

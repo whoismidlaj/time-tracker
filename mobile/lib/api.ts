@@ -5,6 +5,12 @@ import * as SecureStore from 'expo-secure-store';
 const API_URL = 'https://timetracker.onlyfrens.fun/api';
 // const API_URL = 'http://192.168.10.218:3000/api';
 
+let onAuthError: (() => void) | null = null;
+
+export const setAuthErrorCallback = (callback: () => void) => {
+  onAuthError = callback;
+};
+
 const api = axios.create({
   baseURL: API_URL,
   headers: {
@@ -26,7 +32,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       await SecureStore.deleteItemAsync('userToken');
       await SecureStore.deleteItemAsync('userData');
-      // The app will redirect to login on the next protected navigation or when state update triggers
+      if (onAuthError) onAuthError();
     }
     return Promise.reject(error);
   }

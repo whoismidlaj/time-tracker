@@ -199,6 +199,7 @@ export default function HistoryScreen() {
         visible={detailVisible}
         onClose={() => setDetailVisible(false)}
         onEdit={handleEditPress}
+        onRefresh={fetchHistory}
       />
 
       <EditSessionModal 

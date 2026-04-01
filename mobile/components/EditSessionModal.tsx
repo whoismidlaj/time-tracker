@@ -87,10 +87,10 @@ export default function EditSessionModal({ session, visible, onClose, onRefresh 
         await api.post('/session', payload);
       }
 
-      onRefresh();
+      if (onRefresh) onRefresh();
       onClose();
     } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to save session");
+      Alert.alert("Error", err.response?.data?.error || err.message || "Failed to save session");
     } finally {
       setLoading(false);
     }
@@ -109,7 +109,7 @@ export default function EditSessionModal({ session, visible, onClose, onRefresh 
             setDeleting(true);
             try {
               await api.delete(`/session/${session.id}`);
-              onRefresh();
+              if (onRefresh) onRefresh();
               onClose();
             } catch (err) {
               Alert.alert("Error", "Failed to delete session");

@@ -113,6 +113,30 @@ export async function updateUser(userId, data) {
   return getUserById(userId);
 }
 
+export async function toggleUserStatus(userId, isActive) {
+  const db = await getDb();
+  await db.query('UPDATE users SET is_active = $1 WHERE id = $2', [isActive, userId]);
+  return true;
+}
+
+export async function getAppSettings() {
+  const db = await getDb();
+  const res = await db.query('SELECT * FROM app_settings');
+  return res.rows.reduce((acc, row) => {
+    acc[row.key] = row.value;
+    return acc;
+  }, {});
+}
+
+export async function updateAppSetting(key, value) {
+  const db = await getDb();
+  await db.query(
+    'INSERT INTO app_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value',
+    [key, value]
+  );
+  return true;
+}
+
 export async function getActiveSession(userId) {
   const db = await getDb();
   const res = await db.query(
@@ -141,8 +165,10 @@ export async function punchIn(userId, notes = null, timestamp = null) {
   if (!userId) throw new Error('Not authenticated');
   if (await getActiveSession(userId)) throw new Error('Already punched in');
 
-  const db = await getDb();
   const now = timestamp || new Date().toISOString();
+  await ensureNoOverlap(userId, now, null);
+
+  const db = await getDb();
   const res = await db.query(
     'INSERT INTO sessions (user_id, punch_in_time, notes) VALUES ($1, $2, $3) RETURNING id',
     [userId, now, notes]
@@ -150,8 +176,41 @@ export async function punchIn(userId, notes = null, timestamp = null) {
   return getSessionById(res.rows[0].id);
 }
 
+async function ensureNoOverlap(userId, punchInTime, punchOutTime, sessionId = null) {
+  const db = await getDb();
+  const now = new Date();
+  
+  // Future check
+  if (new Date(punchInTime) > now) {
+    throw new Error('Punch-in time cannot be in the future.');
+  }
+  if (punchOutTime && new Date(punchOutTime) > now) {
+    throw new Error('Punch-out time cannot be in the future.');
+  }
+
+  const outTime = punchOutTime || '9999-12-31T23:59:59Z';
+  
+  const query = sessionId
+    ? `SELECT id, punch_in_time, punch_out_time FROM sessions WHERE user_id = $1 AND id != $4 AND punch_in_time < $3 AND (punch_out_time IS NULL OR punch_out_time > $2) LIMIT 1`
+    : `SELECT id, punch_in_time, punch_out_time FROM sessions WHERE user_id = $1 AND punch_in_time < $3 AND (punch_out_time IS NULL OR punch_out_time > $2) LIMIT 1`;
+  
+  const params = sessionId ? [userId, punchInTime, outTime, sessionId] : [userId, punchInTime, outTime];
+  const res = await db.query(query, params);
+  
+  if (res.rows.length > 0) {
+    const overlap = res.rows[0];
+    const start = new Date(overlap.punch_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const end = overlap.punch_out_time 
+      ? new Date(overlap.punch_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : 'Ongoing';
+    throw new Error(`This session overlaps with an existing session from ${start} to ${end}.`);
+  }
+}
+
 export async function createManualSession(userId, data) {
   if (!userId) throw new Error('Not authenticated');
+  await ensureNoOverlap(userId, data.punch_in_time, data.punch_out_time);
+  
   const db = await getDb();
   const res = await db.query(
     'INSERT INTO sessions (user_id, punch_in_time, punch_out_time, notes) VALUES ($1, $2, $3, $4) RETURNING id',
@@ -163,6 +222,11 @@ export async function createManualSession(userId, data) {
 export async function updateSession(sessionId, userId, data) {
   const session = await getSessionById(sessionId);
   if (!session || session.user_id !== userId) throw new Error('Session not found');
+
+  const finalInTime = data.punch_in_time || session.punch_in_time;
+  const finalOutTime = data.punch_out_time !== undefined ? data.punch_out_time : session.punch_out_time;
+
+  await ensureNoOverlap(userId, finalInTime, finalOutTime, sessionId);
 
   const db = await getDb();
   const fields = [];
@@ -295,3 +359,31 @@ export async function getTodaySessions(userId, dateStr) {
   return res.rows;
 }
 
+export async function getUsersMetrics() {
+  const db = await getDb();
+  // We'll calculate:
+  // - User info (id, email, name, role, avatar)
+  // - count of sessions in last 30 days
+  // - sum of duration in last 30 days (worked hours)
+  // - last_active (max punch_in_time)
+  
+  const query = `
+    SELECT 
+      u.id, 
+      u.email, 
+      u.display_name, 
+      u.avatar_url, 
+      u.role,
+      u.created_at,
+      u.is_active,
+      COUNT(s.id) FILTER (WHERE s.punch_in_time > NOW() - INTERVAL '30 days') as sessions_30d,
+      MAX(s.punch_in_time) as last_active
+    FROM users u
+    LEFT JOIN sessions s ON u.id = s.user_id
+    GROUP BY u.id
+    ORDER BY last_active DESC NULLS LAST
+  `;
+  
+  const res = await db.query(query);
+  return res.rows;
+}

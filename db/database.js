@@ -1,8 +1,40 @@
 import { Pool } from 'pg';
+import { scryptSync, randomBytes } from 'crypto';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
+
+function hashPassword(password) {
+  const salt = randomBytes(16).toString('hex');
+  const derived = scryptSync(password, salt, 64).toString('hex');
+  return `${salt}:${derived}`;
+}
+
+async function ensureSuperAdmin(client) {
+  const email = process.env.NEXT_PUBLIC_SUPERADMIN_EMAIL;
+  const password = process.env.SUPERADMIN_PASSWORD;
+  
+  if (!email || !password) return;
+
+  const res = await client.query('SELECT id, role FROM users WHERE email = $1', [email.toLowerCase()]);
+  
+  if (res.rowCount === 0) {
+    console.log('--- Automated Seeding: Creating Superadmin ---');
+    const passwordHash = hashPassword(password);
+    await client.query(
+      'INSERT INTO users (email, password_hash, role, display_name) VALUES ($1, $2, $3, $4)',
+      [email.toLowerCase(), passwordHash, 'admin', 'Super Admin']
+    );
+  } else {
+    console.log('--- Automated Seeding: Synchronizing Superadmin from .env ---');
+    const passwordHash = hashPassword(password);
+    await client.query(
+      'UPDATE users SET role = $1, password_hash = $2, display_name = COALESCE(display_name, $3), is_active = TRUE WHERE email = $4', 
+      ['admin', passwordHash, 'Super Admin', email.toLowerCase()]
+    );
+  }
+}
 
 async function ensureSchema() {
   const client = await pool.connect();
@@ -16,7 +48,14 @@ async function ensureSchema() {
         avatar_url TEXT,
         reset_token TEXT,
         reset_token_expiry TIMESTAMP,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        role TEXT DEFAULT 'user',
+        is_active BOOLEAN DEFAULT TRUE
+      );
+
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
       );
 
       CREATE TABLE IF NOT EXISTS sessions (
@@ -50,6 +89,26 @@ async function ensureSchema() {
       await client.query(`ALTER TABLE users ADD COLUMN reset_token_expiry TIMESTAMP`);
     }
 
+    const roleRes = await client.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'users' AND column_name = 'role'
+    `);
+    
+    if (roleRes.rowCount === 0) {
+      await client.query(`ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'`);
+    }
+
+    const activeRes = await client.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'users' AND column_name = 'is_active'
+    `);
+    
+    if (activeRes.rowCount === 0) {
+      await client.query(`ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT TRUE`);
+    }
+
     const sessionRes = await client.query(`
       SELECT column_name 
       FROM information_schema.columns 
@@ -67,10 +126,34 @@ async function ensureSchema() {
       ON CONFLICT (id) DO NOTHING
     `);
 
+    await ensureSuperAdmin(client);
+    await seedAppSettings(client);
+
   } catch (err) {
     console.error('Error ensuring schema:', err);
   } finally {
     client.release();
+  }
+}
+
+async function seedAppSettings(client) {
+  const defaultSettings = [
+    { key: 'app_info', value: 'Welcome to Time Tracker. High performance time tracking for modern teams.' },
+    { key: 'support_email', value: 'support@example.com' },
+    { key: 'smtp_config', value: JSON.stringify({
+      host: '',
+      port: 587,
+      user: '',
+      pass: '',
+      from: 'noreply@example.com'
+    })}
+  ];
+
+  for (const s of defaultSettings) {
+    await client.query(
+      'INSERT INTO app_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING',
+      [s.key, s.value]
+    );
   }
 }
 

@@ -9,19 +9,21 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const fetchHistory = async () => {
+    try {
+      const res = await fetch('/api/history?type=recent&limit=100');
+      if (!res.ok) throw new Error('Could not load history');
+      const data = await res.json();
+      setSessions(data.sessions || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch('/api/history?type=recent&limit=100');
-        if (!res.ok) throw new Error('Could not load history');
-        const data = await res.json();
-        setSessions(data.sessions || []);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    })();
+    fetchHistory();
   }, []);
 
   if (loading) {
@@ -60,7 +62,7 @@ export default function HistoryPage() {
           <Clock className="h-3.5 w-3.5" />
           <span>All Session History</span>
         </div>
-        <SessionHistory sessions={sessions} />
+        <SessionHistory sessions={sessions} onRefresh={fetchHistory} />
       </div>
     </main>
   );

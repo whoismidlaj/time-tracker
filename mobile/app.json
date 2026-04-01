@@ -4,7 +4,7 @@
     "slug": "time-tracker-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/icon-webapp.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "scheme": "time-track",
@@ -15,7 +15,7 @@
     "android": {
       "package": "com.whoismidlaj.timetrack",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/android-icon-foreground.png",
+        "foregroundImage": "./assets/icon-webapp.png",
         "backgroundColor": "#ffffff"
       }
     },

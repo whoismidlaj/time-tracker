@@ -14,9 +14,11 @@ import { SyncManager } from "../components/SyncManager.jsx";
 import { calcSessionDurationMs, calcTotalBreakMs } from "../lib/utils.js";
 import { Clock } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 export default function HomePage() {
   const { data: sessionData, status: authStatus, update } = useSession();
+  const router = useRouter();
   const [status, setStatus] = useState("off");
   const [session, setSession] = useState(null);
   const [activeBreak, setActiveBreak] = useState(null);
@@ -85,8 +87,12 @@ export default function HomePage() {
   // Load status/history after user resolves
   useEffect(() => {
     if (!user) return;
+    if (user.role === 'admin') {
+      router.replace('/admin');
+      return;
+    }
     refresh();
-  }, [user, refresh]);
+  }, [user, refresh, router]);
 
   // Live timer
   useEffect(() => {

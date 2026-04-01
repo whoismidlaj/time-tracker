@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Button } from './ui/button.jsx';
 import { toast } from '../lib/use-toast.js';
 import { signIn } from 'next-auth/react';
-import { Loader2, Mail, Lock, Chrome, ArrowRight, KeyRound } from 'lucide-react';
+import { Loader2, Mail, Lock, Chrome, ArrowRight, KeyRound, Eye, EyeOff } from 'lucide-react';
 
 export function AuthForm({ onAuthenticated }) {
   const [mode, setMode] = useState('login'); // login, register, forgot
@@ -13,9 +13,19 @@ export function AuthForm({ onAuthenticated }) {
   const [loading, setLoading] = useState(false);
   const [resetToken, setResetToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   async function handleCredentialsAuth(e) {
     e.preventDefault();
+    const adminEmail = process.env.NEXT_PUBLIC_SUPERADMIN_EMAIL;
+    if (email.toLowerCase() === adminEmail?.toLowerCase()) {
+      toast({ 
+        title: "Access Restricted", 
+        description: "Please use the dedicated Admin Portal to log in.", 
+        variant: "destructive" 
+      });
+      return;
+    }
     setLoading(true);
     try {
       if (mode === 'register') {
@@ -156,13 +166,22 @@ export function AuthForm({ onAuthenticated }) {
                   <div className="relative">
                     {mode === 'complete-reset' ? <KeyRound className="absolute left-3.5 top-3.5 h-4 w-4 text-muted-foreground" /> : <Lock className="absolute left-3.5 top-3.5 h-4 w-4 text-muted-foreground" />}
                     <input
-                      type={mode === 'complete-reset' ? "text" : "password"}
+                      type={mode === 'complete-reset' ? "text" : (showPassword ? "text" : "password")}
                       placeholder={mode === 'complete-reset' ? "Enter Reset Token" : "Password"}
                       value={mode === 'complete-reset' ? resetToken : password}
                       onChange={(e) => mode === 'complete-reset' ? setResetToken(e.target.value) : setPassword(e.target.value)}
                       required
-                      className="w-full pl-11 pr-4 h-11 rounded-xl border border-border/60 bg-muted/20 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm font-medium"
+                      className="w-full pl-11 pr-12 h-11 rounded-xl border border-border/60 bg-muted/20 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm font-medium"
                     />
+                    {mode !== 'complete-reset' && (
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3.5 top-3.5 text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -172,13 +191,20 @@ export function AuthForm({ onAuthenticated }) {
                   <div className="relative">
                     <Lock className="absolute left-3.5 top-3.5 h-4 w-4 text-muted-foreground" />
                     <input
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       placeholder="New Password"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       required
-                      className="w-full pl-11 pr-4 h-11 rounded-xl border border-border/60 bg-muted/20 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm font-medium"
+                      className="w-full pl-11 pr-12 h-11 rounded-xl border border-border/60 bg-muted/20 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm font-medium"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3.5 top-3.5 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
                   </div>
                 </div>
               )}

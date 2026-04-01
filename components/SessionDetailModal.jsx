@@ -1,11 +1,30 @@
 "use client";
+import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { X, Clock, Coffee, Pencil, Calendar, ArrowRight } from "lucide-react";
+import { X, Clock, Coffee, Pencil, Calendar, ArrowRight, Trash2, Loader2 } from "lucide-react";
 import { Button } from "./ui/button.jsx";
+import { toast } from "../lib/use-toast.js";
 import { formatTime, formatDate, formatShortDuration, calcSessionDurationMs, calcTotalBreakMs } from "../lib/utils.js";
 
 export function SessionDetailModal({ session, open, onOpenChange, onEdit }) {
+  const [deleting, setDeleting] = useState(false);
   if (!session) return null;
+
+  const handleManualDelete = async () => {
+    if (!confirm("Are you sure you want to delete this session?")) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/session/${session.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete");
+      toast({ title: "Deleted", description: "Session has been removed", variant: "success" });
+      onOpenChange(false);
+      window.location.reload(); // Simple refresh for now
+    } catch (err) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const breaks = session.breaks || [];
   const totalBreakMs = calcTotalBreakMs(breaks);
@@ -106,12 +125,23 @@ export function SessionDetailModal({ session, open, onOpenChange, onEdit }) {
               </div>
             </div>
 
-            <Button 
-              onClick={() => { onOpenChange(false); onEdit(session); }}
-              className="w-full mt-2 rounded-xl h-11 font-bold text-xs gap-2 shadow-lg shadow-primary/20"
-            >
-              <Pencil className="h-4 w-4" /> Edit Session
-            </Button>
+            <div className="flex gap-3 mt-2">
+              <Button 
+                variant="destructive"
+                onClick={handleManualDelete}
+                disabled={deleting}
+                className="px-3 rounded-xl h-11"
+              >
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              </Button>
+              <Button 
+                onClick={() => { onOpenChange(false); onEdit(session); }}
+                className="flex-1 rounded-xl h-11 font-bold text-xs gap-2 shadow-lg shadow-primary/20"
+                disabled={deleting}
+              >
+                <Pencil className="h-4 w-4" /> Edit Session
+              </Button>
+            </div>
           </div>
         </Dialog.Content>
       </Dialog.Portal>

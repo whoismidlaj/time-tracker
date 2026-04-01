@@ -33,6 +33,7 @@ export default function TabsLayout() {
         fontSize: 18,
       },
       headerShown: true,
+      headerTitleAlign: 'left',
     }}>
       <Tabs.Screen
         name="index"

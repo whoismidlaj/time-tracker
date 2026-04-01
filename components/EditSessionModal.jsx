@@ -135,10 +135,13 @@ export function EditSessionModal({ session: initialSession, open, onOpenChange, 
         body: JSON.stringify(body),
       });
 
-      if (!res.ok) throw new Error("Failed to save session");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to save session");
+      }
       
       toast({ title: "Success", description: isEdit ? "Session updated" : "Session added", variant: "success" });
-      onRefresh();
+      if (onRefresh) onRefresh();
       onOpenChange(false);
     } catch (err) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -154,7 +157,7 @@ export function EditSessionModal({ session: initialSession, open, onOpenChange, 
       const res = await fetch(`/api/session/${initialSession.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete");
       toast({ title: "Deleted", description: "Session has been removed" });
-      onRefresh();
+      if (onRefresh) onRefresh();
       onOpenChange(false);
     } catch (err) {
       toast({ title: "Error", description: err.message, variant: "destructive" });

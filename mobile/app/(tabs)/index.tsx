@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Animated, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Animated } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Play, Square, Coffee, Clock, MessageSquare, LogOut, RefreshCcw, Cloud, CloudOff } from 'lucide-react-native';
+import { Tabs } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import api from '../../lib/api';
-import SyncManager, { LocalStatus } from '../../lib/SyncManager';
+import SyncManager from '../../lib/SyncManager';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { 
@@ -17,11 +19,17 @@ import {
 
 export default function TimerScreen() {
   const { colors, theme } = useTheme();
-  const { performAction, syncStatus } = useAuth();
-  const [status, setStatus] = useState<'working' | 'break' | 'off'>('off');
-  const [session, setSession] = useState<any>(null);
-  const [activeBreak, setActiveBreak] = useState<any>(null);
-  const [breaks, setBreaks] = useState<any[]>([]);
+  const { 
+    performAction, 
+    syncStatus, 
+    status, 
+    session, 
+    activeBreak, 
+    breaks, 
+    refreshStatus,
+    updateState
+  } = useAuth();
+
   const [elapsed, setElapsed] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -54,53 +62,29 @@ export default function TimerScreen() {
     }
   }, [status]);
 
-  // Load offline state first
+  // Load settings and sync initial notes
   useEffect(() => {
-    const loadLocal = async () => {
-      const local = await SyncManager.getLocalStatus();
-      if (local) {
-        setStatus(local.status);
-        setSession(local.session);
-        setActiveBreak(local.activeBreak);
-        setBreaks(local.breaks);
-        setNotes(local.session?.notes || '');
-      }
-      setLoading(false);
-    };
-    loadLocal();
-  }, []);
-
-  const fetchStatus = useCallback(async () => {
-    try {
-      const { data } = await api.get('/status');
-      const newStatus = data.status || 'off';
-      setStatus(newStatus);
-      setSession(data.session || null);
-      setActiveBreak(data.activeBreak || null);
-      setBreaks(data.breaks || []);
-      setNotes(data.session?.notes || '');
-      
-      // Persist locally
-      await SyncManager.saveLocalStatus({
-        status: newStatus,
-        session: data.session,
-        activeBreak: data.activeBreak,
-        breaks: data.breaks,
-        lastUpdated: Date.now()
-      });
-
+    const init = async () => {
       const savedSettings = await SecureStore.getItemAsync('appSettings');
       if (savedSettings) setSettings(JSON.parse(savedSettings));
-    } catch (err) {
-      console.warn('Network fetch failed, using local status');
-    } finally {
-      setRefreshing(false);
-    }
+      if (session?.notes) setNotes(session.notes);
+      setLoading(false);
+    };
+    init();
   }, []);
 
+  // Update local notes when session changes (from sync)
   useEffect(() => {
-    fetchStatus();
-  }, [fetchStatus]);
+    if (session?.notes !== undefined && !savingNotes) {
+      setNotes(session.notes || '');
+    }
+  }, [session?.id, session?.notes, savingNotes]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refreshStatus();
+    setRefreshing(false);
+  }, [refreshStatus]);
 
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -120,19 +104,16 @@ export default function TimerScreen() {
 
   const handleAction = async (actionType: string, payload: any = {}) => {
     const timestamp = new Date().toISOString();
-    let newStatus: 'working' | 'break' | 'off' = status;
+    
+    // --- Optimistic State Update ---
+    let newStatus = status;
     let newSession = session ? { ...session } : null;
     let newActiveBreak = activeBreak ? { ...activeBreak } : null;
     let newBreaks = [...breaks];
 
-    // Optimistic Logic
     if (actionType === 'punch_in') {
       newStatus = 'working';
-      newSession = { 
-        punch_in_time: timestamp, 
-        id: 'tmp-' + Date.now(),
-        notes: ''
-      };
+      newSession = { punch_in_time: timestamp, id: 'tmp-' + Date.now(), notes: '' };
     } else if (actionType === 'punch_out') {
       newStatus = 'off';
       newSession = null;
@@ -149,27 +130,22 @@ export default function TimerScreen() {
       }
     }
 
-    // Update Local State Immediately
-    setStatus(newStatus);
-    setSession(newSession);
-    setActiveBreak(newActiveBreak);
-    setBreaks(newBreaks);
-
-    // Persist optimistic state
-    await SyncManager.saveLocalStatus({
+    // Update global state immediately
+    updateState({
       status: newStatus,
       session: newSession,
       activeBreak: newActiveBreak,
-      breaks: newBreaks,
-      lastUpdated: Date.now()
+      breaks: newBreaks
     });
 
-    // Queue for Sync
+    // --- Queue for Background Sync ---
     const endpoint = (actionType === 'punch_in' || actionType === 'punch_out') ? '/session' : '/break';
     const actionPayload = {
       action: actionType === 'start_break' ? 'start' : actionType === 'end_break' ? 'end' : actionType,
-      sessionId: session?.id?.toString().startsWith('tmp') ? undefined : session?.id,
-      breakId: activeBreak?.id?.toString().startsWith('tmp') ? undefined : activeBreak?.id,
+      sessionId: session?.id,
+      breakId: activeBreak?.id,
+      offlineSessionId: newSession?.id,
+      offlineBreakId: newActiveBreak?.id,
       ...payload,
       timestamp
     };
@@ -192,12 +168,6 @@ export default function TimerScreen() {
         method: 'PATCH',
         payload: { notes }
       });
-      // Handle local update for notes
-      const local = await SyncManager.getLocalStatus();
-      if (local && local.session) {
-        local.session.notes = notes;
-        await SyncManager.saveLocalStatus(local);
-      }
     } catch (err) {
       console.error('Save notes error:', err);
     } finally {
@@ -252,6 +222,17 @@ export default function TimerScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <Tabs.Screen 
+        options={{
+          headerTitle: 'TimeTrack',
+          headerRight: () => (
+            <View style={{ marginRight: 20 }}>
+              {syncIndicator()}
+            </View>
+          ),
+          headerTitleAlign: 'left',
+        }} 
+      />
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
@@ -262,19 +243,11 @@ export default function TimerScreen() {
           refreshControl={
             <RefreshControl 
               refreshing={refreshing} 
-              onRefresh={() => { setRefreshing(true); fetchStatus(); }} 
+              onRefresh={onRefresh} 
               tintColor={colors.primary}
             />
           }
         >
-          <View style={styles.header}>
-            <View>
-              <Text style={[styles.greeting, { color: colors.mutedForeground }]}>Time Tracker</Text>
-              <Text style={[styles.title, { color: colors.foreground }]}>Tracker</Text>
-            </View>
-            {syncIndicator()}
-          </View>
-
           <View style={styles.mainContent}>
             {/* Redesigned Card */}
             <View style={[
@@ -381,7 +354,7 @@ export default function TimerScreen() {
                   <View style={styles.metricRow}>
                     <Text style={[styles.metricLabel, { color: colors.mutedForeground }]}>BREAKS LOGGED</Text>
                     <Text style={[styles.metricValue, { color: colors.foreground }]}>
-                      {breaks.filter(b => b.break_end).length} · {formatShortDuration(totalBreakMs)}
+                      {breaks.filter((b: any) => b.break_end).length} · {formatShortDuration(totalBreakMs)}
                     </Text>
                   </View>
 
@@ -758,5 +731,5 @@ const styles = StyleSheet.create({
   actionButtonText: {
     fontSize: 16,
     fontWeight: '700',
-  }
+  },
 });
