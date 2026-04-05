@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { X, Calendar, Clock, Coffee, Plus, Trash2, Heart, User, Sparkles, AlertCircle } from "lucide-react";
+import { X, Calendar, Clock, Coffee, Plus, Trash2, Heart, User, Sparkles, AlertCircle, Home } from "lucide-react";
 import { format, isSameDay } from "date-fns";
 import { formatShortDuration, formatTime } from "../lib/utils.js";
 
@@ -68,6 +68,7 @@ export function DayDetailsModal({ isOpen, onClose, day, sessions, leave, onLeave
   const leaveTypes = [
     { id: "sick", label: "Sick Leave", icon: Heart, color: "text-rose-500", bg: "bg-rose-500/10" },
     { id: "casual", label: "Casual Leave", icon: User, color: "text-sky-500", bg: "bg-sky-500/10" },
+    { id: "wfh", label: "Work From Home", icon: Home, color: "text-teal-500", bg: "bg-teal-500/10" },
     { id: "other", label: "Other Leave", icon: Sparkles, color: "text-violet-500", bg: "bg-violet-500/10" },
   ];
 
@@ -138,7 +139,7 @@ export function DayDetailsModal({ isOpen, onClose, day, sessions, leave, onLeave
             {/* Leave Management */}
             <div className="space-y-3 pt-2">
                 <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider px-1">Mark Absence / Leave</h4>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-4 gap-2">
                     {leaveTypes.map((t) => (
                         <button
                             key={t.id}

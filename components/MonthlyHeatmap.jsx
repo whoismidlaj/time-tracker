@@ -118,6 +118,7 @@ export function MonthlyHeatmap({ monthDate, sessions, leaves = [], onClickDay })
             else if (status === 'leave') {
                 if (leaveType === 'sick') colorClass = SICK_LEAVE_COLOR;
                 else if (leaveType === 'casual') colorClass = CASUAL_LEAVE_COLOR;
+                else if (leaveType === 'wfh') colorClass = WFH_LEAVE_COLOR;
                 else colorClass = OTHER_LEAVE_COLOR;
             }
 
