@@ -425,3 +425,37 @@ export async function updatePasswordWithToken(token, newHash) {
   );
 }
 
+export async function getSessionsByDateRange(userId, startDate, endDate) {
+  const db = await getDb();
+  const res = await db.query(
+    'SELECT * FROM sessions WHERE user_id = $1 AND punch_in_time >= $2 AND punch_in_time <= $3 ORDER BY punch_in_time ASC',
+    [userId, startDate, endDate]
+  );
+  return res.rows;
+}
+
+export async function getLeavesByDateRange(userId, startDate, endDate) {
+  const db = await getDb();
+  const res = await db.query(
+    'SELECT * FROM leaves WHERE user_id = $1 AND leave_date >= $2 AND leave_date <= $3 ORDER BY leave_date ASC',
+    [userId, startDate, endDate]
+  );
+  return res.rows;
+}
+
+export async function toggleLeave(userId, date, type = null, notes = null) {
+  const db = await getDb();
+  if (type === null) {
+    // Remove if exists
+    await db.query('DELETE FROM leaves WHERE user_id = $1 AND leave_date = $2', [userId, date]);
+    return null;
+  } else {
+    // Upsert
+    const res = await db.query(
+      'INSERT INTO leaves (user_id, leave_date, leave_type, notes) VALUES ($1, $2, $3, $4) ON CONFLICT (user_id, leave_date) DO UPDATE SET leave_type = EXCLUDED.leave_type, notes = EXCLUDED.notes RETURNING *',
+      [userId, date, type, notes]
+    );
+    return res.rows[0];
+  }
+}
+

@@ -1,13 +1,13 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { SessionHistory } from "../../components/SessionHistory.jsx";
-import { Clock, ArrowLeft, BarChart3, ChevronRight, ChevronLeft, Calendar as CalendarIcon } from "lucide-react";
+import { ArrowLeft, TrendingUp, Calendar, ChevronRight, ChevronLeft } from "lucide-react";
 import { MonthlyHeatmap } from "../../components/MonthlyHeatmap.jsx";
+import { MonthlyReportCard } from "../../components/MonthlyReportCard.jsx";
 import { DayDetailsModal } from "../../components/DayDetailsModal.jsx";
-import { startOfMonth, addMonths, subMonths, format, isSameMonth, isSameDay } from "date-fns";
+import { startOfMonth, subMonths, addMonths, format, isSameMonth, isSameDay } from "date-fns";
 
-export default function HistoryPage() {
+export default function ReportsPage() {
   const [sessions, setSessions] = useState([]);
   const [leaves, setLeaves] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
@@ -53,9 +53,9 @@ export default function HistoryPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-background text-destructive gap-4">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background text-destructive gap-4 text-center px-4">
         <p>{error}</p>
-        <Link href="/" className="text-sm text-primary underline">Back to Dashboard</Link>
+        <Link href="/history" className="text-sm text-primary underline">Back to History</Link>
       </div>
     );
   }
@@ -64,21 +64,18 @@ export default function HistoryPage() {
     <main className="max-w-lg mx-auto px-4 py-8 space-y-8 min-h-screen pb-20">
       <div className="flex items-center justify-between">
         <Link 
-          href="/" 
+          href="/history" 
           className="inline-flex items-center gap-2 text-xs font-bold text-muted-foreground hover:text-primary transition-all group"
         >
           <div className="w-8 h-8 rounded-xl bg-muted group-hover:bg-primary/10 flex items-center justify-center transition-colors">
             <ArrowLeft className="h-4 w-4" />
           </div>
-          Back to Dashboard
+          Back to History
         </Link>
-        <Link 
-            href="/reports" 
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-widest hover:bg-primary/20 transition-all group"
-        >
-            Full Reports
-            <ChevronRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
-        </Link>
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/10 text-primary">
+            <TrendingUp className="h-3.5 w-3.5" />
+            <span className="text-[10px] font-bold uppercase tracking-widest leading-none">Reports & Analytics</span>
+        </div>
       </div>
 
       <div className="space-y-6">
@@ -92,7 +89,7 @@ export default function HistoryPage() {
             </button>
             
             <div className="flex flex-col items-center">
-                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em] opacity-60">Visual Logs</span>
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em] opacity-60">Analytics</span>
                 <span className="text-sm font-display font-bold text-foreground">
                     {format(selectedMonth, "MMMM yyyy")}
                 </span>
@@ -106,27 +103,32 @@ export default function HistoryPage() {
                 <ChevronRight className="h-5 w-5" />
             </button>
         </div>
-        
+
         {loading ? (
-            <div className="h-[300px] flex items-center justify-center rounded-3xl bg-muted/5 border border-dashed border-border/40 text-muted-foreground/40 text-[11px] font-medium animate-pulse">
-                Fetching archives for {format(selectedMonth, "MMM yyyy")}...
+            <div className="h-[500px] flex items-center justify-center rounded-3xl bg-muted/5 border border-dashed border-border/40 text-muted-foreground/40 text-[11px] font-medium animate-pulse">
+                Analyzing archives for {format(selectedMonth, "MMM yyyy")}...
             </div>
         ) : (
-            <MonthlyHeatmap 
-              monthDate={selectedMonth} 
-              sessions={sessions}
-              leaves={leaves}
-              onClickDay={handleDayClick}
-            />
+            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-700">
+                <MonthlyHeatmap 
+                    monthDate={selectedMonth} 
+                    sessions={sessions}
+                    leaves={leaves}
+                    onClickDay={handleDayClick}
+                />
+                <MonthlyReportCard 
+                    monthDate={selectedMonth} 
+                    sessions={sessions}
+                    leaves={leaves}
+                />
+            </div>
         )}
       </div>
 
-      <div className="space-y-4 pt-6 border-t border-border/50">
-        <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground px-1 uppercase tracking-widest opacity-60">
-          <Clock className="h-3.5 w-3.5" />
-          <span>Sessions in {format(selectedMonth, "MMMM")}</span>
-        </div>
-        <SessionHistory sessions={[...sessions].reverse()} onRefresh={() => fetchHistory(selectedMonth)} />
+      <div className="p-8 rounded-2xl bg-muted/20 border border-dashed border-border/60 text-center space-y-2">
+        <Calendar className="h-8 w-8 text-muted-foreground/20 mx-auto" />
+        <p className="text-xs font-medium text-muted-foreground">Showing history for {format(selectedMonth, "MMMM yyyy")}.</p>
+        <p className="text-[10px] text-muted-foreground/50">Navigate to view past performances!</p>
       </div>
 
       {selectedDay && (
@@ -138,7 +140,7 @@ export default function HistoryPage() {
           leave={leaves.find(l => selectedDay && isSameDay(new Date(l.leave_date), selectedDay))}
           onLeaveToggle={() => {
               fetchHistory(selectedMonth);
-              // Don't close modal here so user can see it updated or switch types
+              // Modal stays open to show update
           }}
         />
       )}

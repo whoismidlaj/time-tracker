@@ -1,25 +1,46 @@
 import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { X, Settings, Sparkles, Globe } from "lucide-react";
+import { X, Settings, Sparkles, Globe, CalendarDays } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle.jsx";
-import { getTimezone, DEFAULT_TIMEZONE, getOfficeStartTime, getOfficeEndTime, getBreakHours } from "../lib/config.js";
+import { getTimezone, DEFAULT_TIMEZONE, getOfficeStartTime, getOfficeEndTime, getBreakHours, getWeeklyHolidays } from "../lib/config.js";
 import { formatTimeString } from "../lib/utils.js";
+
+const DAYS = [
+  { label: "S", value: "0", name: "Sunday" },
+  { label: "M", value: "1", name: "Monday" },
+  { label: "T", value: "2", name: "Tuesday" },
+  { label: "W", value: "3", name: "Wednesday" },
+  { label: "T", value: "4", name: "Thursday" },
+  { label: "F", value: "5", name: "Friday" },
+  { label: "S", value: "6", name: "Saturday" },
+];
 
 export function SettingsModal() {
   const [tz, setTz] = useState(getTimezone());
   const [startTime, setStartTime] = useState(getOfficeStartTime());
   const [endTime, setEndTime] = useState(getOfficeEndTime());
   const [breakHours, setBreakHours] = useState(getBreakHours());
+  const [weeklyHolidays, setWeeklyHolidays] = useState(getWeeklyHolidays());
 
   const handleTzChange = (newTz) => {
     setTz(newTz);
     localStorage.setItem("app_timezone", newTz);
   };
 
+  const toggleHoliday = (dayVal) => {
+    setWeeklyHolidays(prev => {
+      const next = prev.includes(dayVal) 
+        ? prev.filter(d => d !== dayVal) 
+        : [...prev, dayVal];
+      return next;
+    });
+  };
+
   const handleDone = () => {
     localStorage.setItem("app_start_time", startTime);
     localStorage.setItem("app_end_time", endTime);
     localStorage.setItem("app_break_hours", breakHours);
+    localStorage.setItem("app_weekly_holidays", JSON.stringify(weeklyHolidays));
     // Reload to apply changes site-wide
     window.location.reload();
   };
@@ -41,7 +62,7 @@ export function SettingsModal() {
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px] animate-in fade-in" />
-        <Dialog.Content className="fixed left-[50%] top-[50%] z-50 w-full max-w-[280px] translate-x-[-50%] translate-y-[-50%] rounded-2xl border border-border bg-background p-5 shadow-2xl animate-in zoom-in-95 duration-200">
+        <Dialog.Content className="fixed left-[50%] top-[50%] z-50 w-full max-w-[300px] translate-x-[-50%] translate-y-[-50%] rounded-2xl border border-border bg-background p-5 shadow-2xl animate-in zoom-in-95 duration-200 overflow-y-auto max-h-[90vh]">
           <div className="flex items-center justify-between mb-4">
             <Dialog.Title className="text-sm font-bold font-display flex items-center gap-2">
               <Sparkles className="h-3.5 w-3.5 text-primary" />
@@ -77,7 +98,6 @@ export function SettingsModal() {
                   <option key={t.value} value={t.value}>{t.label}</option>
                 ))}
               </select>
-              <p className="text-[9px] text-muted-foreground/60 px-1 font-medium">Selected: {tz}</p>
             </div>
 
             <div className="space-y-3 p-3 rounded-xl border border-border/50 bg-muted/30">
@@ -123,13 +143,39 @@ export function SettingsModal() {
                 </div>
               </div>
             </div>
+
+            <div className="space-y-3 p-3 rounded-xl border border-border/50 bg-muted/30">
+              <div className="flex items-center gap-2 mb-1">
+                <CalendarDays className="h-3 w-3 text-muted-foreground" />
+                <p className="text-[11px] font-bold text-foreground lowercase tracking-tight">Weekly Holidays</p>
+              </div>
+              <div className="flex justify-between gap-1">
+                {DAYS.map(day => (
+                  <button
+                    key={day.value}
+                    onClick={() => toggleHoliday(day.value)}
+                    title={day.name}
+                    className={`
+                      w-7 h-7 rounded-lg text-[9px] font-bold transition-all flex items-center justify-center
+                      ${weeklyHolidays.includes(day.value) 
+                        ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20" 
+                        : "bg-background border border-border/40 text-muted-foreground hover:border-primary/30"
+                      }
+                    `}
+                  >
+                    {day.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[8px] text-muted-foreground/60 px-0.5">Selected days will be marked as holidays in charts.</p>
+            </div>
             
             <Dialog.Close asChild>
               <button 
                 onClick={handleDone}
                 className="w-full py-2.5 text-[11px] font-bold bg-primary text-white rounded-lg shadow-lg shadow-primary/20 hover:opacity-90 active:scale-[0.98] transition-all"
               >
-                Done
+                Save Changes
               </button>
             </Dialog.Close>
           </div>

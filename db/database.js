@@ -86,6 +86,17 @@ async function ensureSchema() {
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT fk_user_support FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       );
+
+      CREATE TABLE IF NOT EXISTS leaves (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        leave_date DATE NOT NULL,
+        leave_type TEXT NOT NULL, -- 'sick', 'casual', 'other'
+        notes TEXT,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT fk_user_leaves FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user_id, leave_date)
+      );
     `);
 
     // Check for existing columns and add if missing (Migration logic)
