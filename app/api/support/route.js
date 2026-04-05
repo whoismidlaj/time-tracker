@@ -28,7 +28,7 @@ export async function GET() {
   const { getAppSettings } = require("@/db/queries");
   try {
     const settings = await getAppSettings();
-    return NextResponse.json({ info: settings.app_info || 'Welcome to Time Tracker.' });
+    return NextResponse.json({ info: settings.app_info || 'Welcome to TimeTrack.' });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

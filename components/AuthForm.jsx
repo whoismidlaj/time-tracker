@@ -94,7 +94,7 @@ export function AuthForm({ onAuthenticated }) {
             {mode === 'login' ? 'Welcome back' : mode === 'register' ? 'Create account' : 'Reset password'}
           </h1>
           <p className="text-sm text-muted-foreground font-medium">
-            {mode === 'login' ? 'Login to your time tracker' : 'Start your productivity journey'}
+            {mode === 'login' ? 'Login to TimeTrack' : 'Start your productivity journey'}
           </p>
         </div>
 

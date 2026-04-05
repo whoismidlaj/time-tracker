@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 export async function GET() {
   try {
     const settings = await getAppSettings();
-    return NextResponse.json({ info: settings.app_info || 'Welcome to Time Tracker.' });
+    return NextResponse.json({ info: settings.app_info || 'Welcome to TimeTrack.' });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

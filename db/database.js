@@ -172,7 +172,7 @@ async function ensureSchema() {
 
 async function seedAppSettings(client) {
   const defaultSettings = [
-    { key: 'app_info', value: 'Welcome to Time Tracker. High performance time tracking for modern teams.' },
+    { key: 'app_info', value: 'Welcome to TimeTrack. High performance time tracking for modern teams.' },
     { key: 'support_email', value: 'support@example.com' },
     { key: 'smtp_config', value: JSON.stringify({
       host: '',
