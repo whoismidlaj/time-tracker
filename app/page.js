@@ -127,45 +127,8 @@ export default function HomePage() {
     return <AuthForm onAuthenticated={refresh} />;
   }
 
-  async function handleLogout() {
-    signOut({ redirect: false });
-    setStatus('off');
-    setSession(null);
-    setActiveBreak(null);
-    setBreaks([]);
-    setTodaySessions([]);
-    setAllSessions([]);
-  }
-
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-10 border-b border-border/40 bg-background/80 backdrop-blur-md">
-        <div className="max-w-lg mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-primary/20 flex items-center justify-center shadow-inner">
-              <Clock className="h-4.5 w-4.5 text-primary" />
-            </div>
-            <span className="font-display font-bold text-lg tracking-tight">TimeTrack</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <div className="flex flex-col items-end mr-1">
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                {new Date().toLocaleDateString([], { weekday: "short" })}
-              </span>
-              <span className="text-[10px] font-medium text-muted-foreground leading-none">
-                {new Date().toLocaleDateString([], { day: "numeric", month: "short" })}
-              </span>
-            </div>
-            
-            <SettingsModal />
-            <div className="w-px h-4 bg-border/50 mx-1" />
-            <UserNav user={user} onLogout={handleLogout} onUpdate={update} />
-          </div>
-        </div>
-      </header>
-
       {/* Main content */}
       <main className="max-w-lg mx-auto px-4 py-4 space-y-4 pb-44">
         {/* Status card */}

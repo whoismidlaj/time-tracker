@@ -1,4 +1,5 @@
 import "./globals.css";
+import { Header } from "../components/Header.jsx";
 import { Toaster } from "../components/ui/toaster.jsx";
 import { ThemeProvider } from "../components/theme-provider.jsx";
 import { SessionProvider } from "../components/SessionProvider.jsx";
@@ -34,7 +35,12 @@ export default function RootLayout({ children }) {
       <body className="font-body bg-background text-foreground antialiased transition-colors duration-300" suppressHydrationWarning>
         <SessionProvider>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-            {children}
+            <div className="flex flex-col min-h-screen">
+              <Header />
+              <div className="flex-1">
+                {children}
+              </div>
+            </div>
             <Toaster />
           </ThemeProvider>
         </SessionProvider>
