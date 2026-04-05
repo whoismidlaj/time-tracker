@@ -5,7 +5,7 @@ import { ThemeProvider } from "../components/theme-provider.jsx";
 import { SessionProvider } from "../components/SessionProvider.jsx";
 
 export const metadata = {
-  title: "TimeTrack — Fast Time Tracking",
+  title: "TimeTrack — Office Time Tracking",
   description: "Personal office time tracking app",
   manifest: "/manifest.json",
   appleWebApp: {
