@@ -2,7 +2,8 @@
 import { useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Avatar from "@radix-ui/react-avatar";
-import { LogOut, User, Settings, Info, MessageSquare } from "lucide-react";
+import { LogOut, User, Settings, Info, MessageSquare, HelpCircle } from "lucide-react";
+import Link from "next/link";
 import { ProfileModal } from "./ProfileModal.jsx";
 import { AppInfoModal } from "./AppInfoModal.jsx";
 import { SupportModal } from "./SupportModal.jsx";
@@ -57,6 +58,18 @@ export function UserNav({ user, onLogout, onUpdate }) {
                 <Info className="h-3 w-3 text-muted-foreground" />
               </div>
               App Info
+            </DropdownMenu.Item>
+
+            <DropdownMenu.Item asChild>
+              <Link 
+                href="/help"
+                className="relative flex cursor-default select-none items-center rounded-lg px-2.5 py-2 text-[11px] font-bold ml-1 outline-none transition-all focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 gap-2.5 group"
+              >
+                <div className="w-6 h-6 rounded-md bg-muted flex items-center justify-center group-focus:bg-muted-foreground/10 transition-colors">
+                  <HelpCircle className="h-3 w-3 text-muted-foreground" />
+                </div>
+                Help & Guide
+              </Link>
             </DropdownMenu.Item>
 
             <DropdownMenu.Item 
