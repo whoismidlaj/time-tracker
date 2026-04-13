@@ -3,13 +3,16 @@ import React from "react";
 import Link from "next/link";
 import { Clock } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
+import { usePathname } from "next/navigation";
 import { SettingsModal } from "./SettingsModal.jsx";
 import { UserNav } from "./UserNav.jsx";
 
 export function Header() {
   const { data: sessionData, status: authStatus, update } = useSession();
+  const pathname = usePathname();
   const user = sessionData?.user;
 
+  if (pathname?.startsWith("/admin")) return null;
   if (authStatus === "loading" || !user) return null;
 
   async function handleLogout() {

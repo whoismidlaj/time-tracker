@@ -144,6 +144,15 @@ async function ensureSchema() {
       await client.query(`ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT TRUE`);
     }
 
+    const lastActiveTimeRes = await client.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'users' AND column_name = 'last_active_time'
+    `);
+    if (lastActiveTimeRes.rowCount === 0) {
+      await client.query(`ALTER TABLE users ADD COLUMN last_active_time TIMESTAMPTZ`);
+    }
+
     const settingsRes = await client.query(`
       SELECT column_name 
       FROM information_schema.columns 

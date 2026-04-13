@@ -131,6 +131,12 @@ export async function toggleUserStatus(userId, isActive) {
   return true;
 }
 
+export async function updateUserLastActive(userId) {
+  const db = await getDb();
+  await db.query('UPDATE users SET last_active_time = CURRENT_TIMESTAMP WHERE id = $1', [userId]);
+  return true;
+}
+
 export async function getAppSettings() {
   const db = await getDb();
   const res = await db.query('SELECT * FROM app_settings');
@@ -389,7 +395,7 @@ export async function getUsersMetrics() {
       u.created_at,
       u.is_active,
       COUNT(s.id) FILTER (WHERE s.punch_in_time > NOW() - INTERVAL '30 days') as sessions_30d,
-      MAX(s.punch_in_time) as last_active
+      GREATEST(u.last_active_time, MAX(s.punch_in_time)) as last_active
     FROM users u
     LEFT JOIN sessions s ON u.id = s.user_id
     GROUP BY u.id
