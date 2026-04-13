@@ -106,6 +106,25 @@ export async function updateUser(userId, data) {
   return getUserById(userId);
 }
 
+export function getUserSettings(user) {
+  if (!user) return {};
+  return typeof user.settings === 'string' ? JSON.parse(user.settings) : (user.settings || {});
+}
+
+export async function updateUserSettings(userId, settings) {
+  const db = await getDb();
+  // Fetch current settings to merge
+  const user = await getUserById(userId);
+  const currentSettings = getUserSettings(user);
+  const newSettings = { ...currentSettings, ...settings };
+  
+  await db.query(
+    'UPDATE users SET settings = $1 WHERE id = $2',
+    [JSON.stringify(newSettings), userId]
+  );
+  return newSettings;
+}
+
 export async function toggleUserStatus(userId, isActive) {
   const db = await getDb();
   await db.query('UPDATE users SET is_active = $1 WHERE id = $2', [isActive, userId]);

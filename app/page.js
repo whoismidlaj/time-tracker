@@ -27,6 +27,7 @@ export default function HomePage() {
   const [allSessions, setAllSessions] = useState([]);
   const [elapsed, setElapsed] = useState(0);
   const [tick, setTick] = useState(0);
+  const [serverOffset, setServerOffset] = useState(0);
   const timerRef = useRef(null);
   
   const user = sessionData?.user;
@@ -48,6 +49,9 @@ export default function HomePage() {
       setSession(data.session || null);
       setActiveBreak(data.activeBreak || null);
       setBreaks(data.breaks || []);
+      if (data.server_time) {
+        setServerOffset(Date.now() - new Date(data.server_time).getTime());
+      }
     } catch (e) {
       console.error('Status fetch error:', e);
       setStatus('off');
@@ -94,12 +98,54 @@ export default function HomePage() {
     refresh();
   }, [user, refresh, router]);
 
+  // Real-time Sync (SSE) - Sync with other devices instantly
+  useEffect(() => {
+    if (!user) return;
+    
+    const eventSource = new EventSource('/api/sync/events');
+
+    eventSource.onmessage = (event) => {
+      // Handle heartbeats (empty data)
+      if (!event.data) return;
+    };
+
+    eventSource.addEventListener('status-update', (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setStatus(data.status || 'off');
+        setSession(data.session || null);
+        setActiveBreak(data.activeBreak || null);
+        setBreaks(data.breaks || []);
+        if (data.server_time) {
+          setServerOffset(Date.now() - new Date(data.server_time).getTime());
+        }
+        // Also refresh history to update the "Recent Sessions" list
+        fetchHistory();
+      } catch (err) {
+        console.error('SSE status-update parse error:', err);
+      }
+    });
+
+    eventSource.addEventListener('settings-update', () => {
+      // Just trigger a full refresh if settings change
+      refresh();
+    });
+
+    eventSource.onerror = (err) => {
+      console.error('SSE Error, reconnecting...', err);
+      eventSource.close();
+    };
+
+    return () => eventSource.close();
+  }, [user, refresh, fetchHistory]);
+
   // Live timer
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (session && (status === "working" || status === "break")) {
       const update = () => {
-        setElapsed(calcSessionDurationMs(session, breaks));
+        const nowMs = Date.now() - serverOffset;
+        setElapsed(calcSessionDurationMs(session, breaks, nowMs));
         setTick(t => t + 1);
       };
       update();

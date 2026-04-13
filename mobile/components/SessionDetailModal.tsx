@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, SafeAreaView, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { X, Clock, Coffee, Pencil, Calendar, ArrowRight, Trash2 } from 'lucide-react-native';
 import api from '../lib/api';
 import { useTheme } from '../context/ThemeContext';

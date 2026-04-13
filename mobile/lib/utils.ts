@@ -54,27 +54,27 @@ export function formatDate(isoString: string): string {
   });
 }
 
-export function calcTotalBreakMs(breaks: any[]): number {
+export function calcTotalBreakMs(breaks: any[], nowMs: number = Date.now()): number {
   return breaks.reduce((acc, b) => {
     if (!b.break_start) return acc;
     const start = new Date(b.break_start).getTime();
-    const end = b.break_end ? new Date(b.break_end).getTime() : Date.now();
+    const end = b.break_end ? new Date(b.break_end).getTime() : nowMs;
     return acc + (end - start);
   }, 0);
 }
 
-export function calcGrossSessionDurationMs(session: any): number {
+export function calcGrossSessionDurationMs(session: any, nowMs: number = Date.now()): number {
   if (!session?.punch_in_time) return 0;
   const start = new Date(session.punch_in_time).getTime();
-  const end = session.punch_out_time ? new Date(session.punch_out_time).getTime() : Date.now();
+  const end = session.punch_out_time ? new Date(session.punch_out_time).getTime() : nowMs;
   return Math.max(0, end - start);
 }
 
-export function calcSessionDurationMs(session: any, breaks: any[] = []): number {
+export function calcSessionDurationMs(session: any, breaks: any[] = [], nowMs: number = Date.now()): number {
   if (!session?.punch_in_time) return 0;
   const start = new Date(session.punch_in_time).getTime();
-  const end = session.punch_out_time ? new Date(session.punch_out_time).getTime() : Date.now();
-  const totalBreak = calcTotalBreakMs(breaks);
+  const end = session.punch_out_time ? new Date(session.punch_out_time).getTime() : nowMs;
+  const totalBreak = calcTotalBreakMs(breaks, nowMs);
   return Math.max(0, end - start - totalBreak);
 }
 

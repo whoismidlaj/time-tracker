@@ -7,11 +7,12 @@ const STATUS_KEY = '@time-track/local-status';
 
 export interface PendingAction {
   id: string;
-  type: 'session' | 'break' | 'note';
+  type: 'session' | 'break' | 'note' | 'settings';
   endpoint: string;
   method: 'POST' | 'PATCH' | 'DELETE';
   payload: any;
   timestamp: number;
+  retryCount?: number;
 }
 
 export interface LocalStatus {
@@ -25,6 +26,7 @@ export interface LocalStatus {
 class SyncManager {
   private isSyncing = false;
   private listeners: ((data: any) => void)[] = [];
+  private onRefreshNeeded: (() => void)[] = [];
 
   subscribe(callback: (data: any) => void) {
     this.listeners.push(callback);
@@ -33,8 +35,19 @@ class SyncManager {
     };
   }
 
+  subscribeRefresh(callback: () => void) {
+    this.onRefreshNeeded.push(callback);
+    return () => {
+      this.onRefreshNeeded = this.onRefreshNeeded.filter(l => l !== callback);
+    };
+  }
+
   private notify(data: any) {
     this.listeners.forEach(l => l(data));
+  }
+
+  private triggerRefresh() {
+    this.onRefreshNeeded.forEach(l => l());
   }
 
   async getQueue(): Promise<PendingAction[]> {
@@ -48,6 +61,11 @@ class SyncManager {
 
   async clearQueue() {
     await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([]));
+  }
+
+  async hasPendingActions(): Promise<boolean> {
+    const queue = await this.getQueue();
+    return queue.length > 0;
   }
 
   async getLocalStatus(): Promise<LocalStatus | null> {
@@ -69,6 +87,7 @@ class SyncManager {
       ...action,
       id: Math.random().toString(36).substr(2, 9),
       timestamp: Date.now(),
+      retryCount: 0,
     };
     queue.push(newAction);
     await this.saveQueue(queue);
@@ -141,7 +160,7 @@ class SyncManager {
           // so it can be retried once the user logs in again.
           if (err.response?.status === 401) {
             console.warn('Sync paused: Session expired (401). Retrying after re-auth.');
-            break; 
+            throw err; // Propagate to AuthContext
           }
 
           // If it's a 500 error from an old offline payload that we cannot resolve, drop it to avoid blocking the queue.
@@ -153,12 +172,28 @@ class SyncManager {
           }
 
           if (err.response?.status && err.response.status < 500) {
-            console.error('Action failed, dropping:', action, err.message);
+            console.error('[SyncManager] Action invalid, dropping:', {
+              id: action.id,
+              error: err.response.data?.error || err.message,
+              status: err.response.status
+            });
             queue.shift();
             await this.saveQueue(queue);
+            this.triggerRefresh(); // Sync UI with actual server state
           } else {
-            console.warn('Sync failed for action:', action.id, err.message);
-            break; 
+            // Increment retry count for 500 errors
+            action.retryCount = (action.retryCount || 0) + 1;
+            
+            if (action.retryCount >= 5) {
+              console.error('[SyncManager] Max retries reached for action, dropping:', action.id);
+              queue.shift();
+              await this.saveQueue(queue);
+              this.triggerRefresh();
+            } else {
+              console.warn(`[SyncManager] Temp failure (Retry ${action.retryCount}/5), retrying later:`, action.id, err.message);
+              await this.saveQueue(queue); // Persistence fix
+              break; 
+            }
           }
         }
       }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X, Settings, Sparkles, Globe, CalendarDays } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle.jsx";
@@ -21,10 +21,33 @@ export function SettingsModal() {
   const [endTime, setEndTime] = useState(getOfficeEndTime());
   const [breakHours, setBreakHours] = useState(getBreakHours());
   const [weeklyHolidays, setWeeklyHolidays] = useState(getWeeklyHolidays());
+  const [loading, setLoading] = useState(true);
+
+  // Fetch Cloud Settings on mount
+  useEffect(() => {
+    async function fetchSettings() {
+      try {
+        const res = await fetch("/api/user/settings");
+        const data = await res.json();
+        if (data.settings && Object.keys(data.settings).length > 0) {
+          const s = data.settings;
+          if (s.app_timezone) { setTz(s.app_timezone); localStorage.setItem("app_timezone", s.app_timezone); }
+          if (s.app_start_time) { setStartTime(s.app_start_time); localStorage.setItem("app_start_time", s.app_start_time); }
+          if (s.app_end_time) { setEndTime(s.app_end_time); localStorage.setItem("app_end_time", s.app_end_time); }
+          if (s.app_break_hours) { setBreakHours(s.app_break_hours); localStorage.setItem("app_break_hours", s.app_break_hours); }
+          if (s.app_weekly_holidays) { setWeeklyHolidays(s.app_weekly_holidays); localStorage.setItem("app_weekly_holidays", JSON.stringify(s.app_weekly_holidays)); }
+        }
+      } catch (err) {
+        console.error("Failed to fetch cloud settings", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchSettings();
+  }, []);
 
   const handleTzChange = (newTz) => {
     setTz(newTz);
-    localStorage.setItem("app_timezone", newTz);
   };
 
   const toggleHoliday = (dayVal) => {
@@ -36,11 +59,33 @@ export function SettingsModal() {
     });
   };
 
-  const handleDone = () => {
-    localStorage.setItem("app_start_time", startTime);
-    localStorage.setItem("app_end_time", endTime);
-    localStorage.setItem("app_break_hours", breakHours);
-    localStorage.setItem("app_weekly_holidays", JSON.stringify(weeklyHolidays));
+  const handleDone = async () => {
+    const settings = {
+      app_timezone: tz,
+      app_start_time: startTime,
+      app_end_time: endTime,
+      app_break_hours: breakHours,
+      app_weekly_holidays: weeklyHolidays
+    };
+
+    // Save to Local
+    localStorage.setItem("app_timezone", settings.app_timezone);
+    localStorage.setItem("app_start_time", settings.app_start_time);
+    localStorage.setItem("app_end_time", settings.app_end_time);
+    localStorage.setItem("app_break_hours", settings.app_break_hours);
+    localStorage.setItem("app_weekly_holidays", JSON.stringify(settings.app_weekly_holidays));
+
+    // Push to Cloud
+    try {
+      await fetch("/api/user/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings })
+      });
+    } catch (err) {
+      console.error("Failed to push cloud settings", err);
+    }
+
     // Reload to apply changes site-wide
     window.location.reload();
   };

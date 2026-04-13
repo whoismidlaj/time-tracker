@@ -50,7 +50,8 @@ async function ensureSchema() {
         reset_token_expiry TIMESTAMPTZ,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         role TEXT DEFAULT 'user',
-        is_active BOOLEAN DEFAULT TRUE
+        is_active BOOLEAN DEFAULT TRUE,
+        settings JSONB DEFAULT '{}'
       );
 
       CREATE TABLE IF NOT EXISTS app_settings (
@@ -141,6 +142,16 @@ async function ensureSchema() {
     
     if (activeRes.rowCount === 0) {
       await client.query(`ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT TRUE`);
+    }
+
+    const settingsRes = await client.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'users' AND column_name = 'settings'
+    `);
+    
+    if (settingsRes.rowCount === 0) {
+      await client.query(`ALTER TABLE users ADD COLUMN settings JSONB DEFAULT '{}'`);
     }
 
     const sessionRes = await client.query(`

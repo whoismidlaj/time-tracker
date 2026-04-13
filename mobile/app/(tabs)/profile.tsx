@@ -1,430 +1,306 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Alert, ScrollView, Switch, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, Alert, ActivityIndicator, TextInput, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { Picker } from '@react-native-picker/picker';
-import { useRouter, Stack } from 'expo-router';
+import { User, Shield, Bell, Moon, LogOut, ChevronRight, Clock, Globe, CalendarDays, ExternalLink, HelpCircle } from 'lucide-react-native';
 import * as SecureStore from 'expo-secure-store';
-import { LogOut, User, Mail, Shield, Clock, Coffee, Globe, Save, Moon, Sun, ChevronRight, RefreshCw } from 'lucide-react-native';
-import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
-import SyncManager from '../../lib/SyncManager';
+import { useAuth } from '../../context/AuthContext';
+import * as Linking from 'expo-linking';
 
-const DEFAULT_SETTINGS = {
-  timezone: "Asia/Kolkata",
-  startTime: "09:30",
-  endTime: "18:30",
-  breakHours: "1"
-};
+const TIMEZONES = [
+  { label: 'India (Kolkata)', value: 'Asia/Kolkata' },
+  { label: 'UTC', value: 'UTC' },
+  { label: 'Dubai', value: 'Asia/Dubai' },
+  { label: 'London', value: 'Europe/London' },
+  { label: 'New York', value: 'America/New_York' },
+  { label: 'Singapore', value: 'Asia/Singapore' },
+];
+
+const DAYS = [
+  { label: 'S', value: '0', name: 'Sunday' },
+  { label: 'M', value: '1', name: 'Monday' },
+  { label: 'T', value: '2', name: 'Tuesday' },
+  { label: 'W', value: '3', name: 'Wednesday' },
+  { label: 'T', value: '4', name: 'Thursday' },
+  { label: 'F', value: '5', name: 'Friday' },
+  { label: 'S', value: '6', name: 'Saturday' },
+];
 
 export default function ProfileScreen() {
-  const { user, signOut } = useAuth();
-  const { theme, colors, toggleTheme, setTheme } = useTheme();
-  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const { user, signOut, performAction, refreshSettings, isAuth, clearPendingSyncs } = useAuth();
+  const { theme, colors, toggleTheme } = useTheme();
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const router = useRouter();
+  
+  const [startTime, setStartTime] = useState('09:30');
+  const [endTime, setEndTime] = useState('18:30');
+  const [breakHours, setBreakHours] = useState('1');
+  const [timezone, setTimezone] = useState('Asia/Kolkata');
+  const [weeklyHolidays, setWeeklyHolidays] = useState<string[]>(['0', '6']);
 
+  // Load settings on mount
   useEffect(() => {
-    const loadSettings = async () => {
-      const savedSettings = await SecureStore.getItemAsync('appSettings');
-      if (savedSettings) setSettings(JSON.parse(savedSettings));
+    const init = async () => {
+      if (isAuth) await refreshSettings();
+      const saved = await SecureStore.getItemAsync('appSettings');
+      if (saved) {
+        const s = JSON.parse(saved);
+        if (s.app_start_time) setStartTime(s.app_start_time);
+        if (s.app_end_time) setEndTime(s.app_end_time);
+        if (s.app_break_hours) setBreakHours(s.app_break_hours.toString());
+        if (s.app_timezone) setTimezone(s.app_timezone);
+        if (s.app_weekly_holidays) setWeeklyHolidays(s.app_weekly_holidays);
+      }
+      setLoading(false);
     };
-    loadSettings();
-  }, []);
+    init();
+  }, [isAuth, refreshSettings]);
 
   const handleLogout = async () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Logout', 
-          style: 'destructive',
-          onPress: async () => {
-            await signOut();
-          }
-        },
-      ]
-    );
+    Alert.alert('Sign Out', 'Are you sure?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign Out', style: 'destructive', onPress: signOut },
+    ]);
   };
 
-  const clearSyncCache = async () => {
-    Alert.alert(
-      'Clear Cache',
-      'This will delete pending offline actions. Use this only if sync is permanently stuck.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Clear Cache', 
-          style: 'destructive',
-          onPress: async () => {
-            await SyncManager.clearQueue();
-            await SyncManager.clearLocalStatus();
-            Alert.alert('Success', 'Cache cleared. App will sync fresh data.');
-          }
-        },
-      ]
+  const toggleHoliday = (day: string) => {
+    setWeeklyHolidays(prev => 
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
     );
   };
 
   const saveSettings = async () => {
     setSaving(true);
+    const settings = {
+      app_start_time: startTime,
+      app_end_time: endTime,
+      app_break_hours: parseFloat(breakHours) || 1,
+      app_timezone: timezone,
+      app_weekly_holidays: weeklyHolidays
+    };
+
     try {
       await SecureStore.setItemAsync('appSettings', JSON.stringify(settings));
-      Alert.alert('Success', 'Settings saved successfully');
+      await performAction({
+        type: 'settings',
+        endpoint: '/user/settings',
+        method: 'PATCH',
+        payload: { settings }
+      });
+      Alert.alert("Success", "Settings saved and syncing...");
     } catch (err) {
-      console.error('Save settings error:', err);
-      Alert.alert('Error', 'Failed to save settings');
+      Alert.alert("Error", "Failed to save settings locally");
     } finally {
       setSaving(false);
     }
   };
 
-  if (!user) return null;
+  if (loading) {
+    return (
+      <View style={[styles.centerContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Profile Header */}
         <View style={styles.header}>
-          <View style={[styles.avatarContainer, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-            {user.avatar_url ? (
-              <Image source={{ uri: user.avatar_url }} style={styles.avatar} />
-            ) : (
-              <User size={40} color={colors.mutedForeground} />
-            )}
+          <View style={[styles.avatar, { backgroundColor: colors.primary + '20' }]}>
+            <Text style={[styles.avatarText, { color: colors.primary }]}>
+              {user?.display_name?.charAt(0) || user?.email?.charAt(0).toUpperCase()}
+            </Text>
           </View>
-          <Text style={[styles.name, { color: colors.foreground }]}>{user.display_name || 'User'}</Text>
-          <Text style={[styles.email, { color: colors.mutedForeground }]}>{user.email}</Text>
+          <Text style={[styles.name, { color: colors.foreground }]}>{user?.display_name || 'User'}</Text>
+          <Text style={[styles.email, { color: colors.mutedForeground }]}>{user?.email}</Text>
         </View>
 
-        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>APPEARANCE</Text>
-          <View style={styles.settingItem}>
-            <View style={styles.settingInfo}>
-              <View style={[styles.iconBox, { backgroundColor: colors.primary + '15' }]}>
-                {theme === 'dark' ? <Moon size={18} color={colors.primary} /> : <Sun size={18} color={colors.primary} />}
-              </View>
-              <Text style={[styles.settingLabel, { color: colors.foreground }]}>Dark Mode</Text>
-            </View>
-            <Switch
-              value={theme === 'dark'}
-              onValueChange={toggleTheme}
-              trackColor={{ false: colors.border, true: colors.primary }}
-              thumbColor="#fff"
-            />
-          </View>
-        </View>
-
-        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>OFFICE SETTINGS</Text>
+        {/* Dynamic Settings Section */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>OFFICE RULES</Text>
           
-          <SettingTimePicker
-            icon={<Clock size={18} color={colors.mutedForeground} />}
-            label="Start Time"
-            timeValue={settings.startTime}
-            onChange={(v: string) => setSettings({ ...settings, startTime: v })}
-            colors={colors}
-          />
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.settingItem}>
+              <View style={styles.settingIconText}>
+                <Clock size={20} color={colors.mutedForeground} />
+                <Text style={[styles.settingLabel, { color: colors.foreground }]}>Office Hours</Text>
+              </View>
+              <View style={styles.timeInputs}>
+                <TextInput
+                  value={startTime}
+                  onChangeText={setStartTime}
+                  style={[styles.timeInput, { color: colors.primary, backgroundColor: colors.muted }]}
+                  placeholder="09:30"
+                />
+                <Text style={{ color: colors.mutedForeground }}>-</Text>
+                <TextInput
+                  value={endTime}
+                  onChangeText={setEndTime}
+                  style={[styles.timeInput, { color: colors.primary, backgroundColor: colors.muted }]}
+                  placeholder="18:30"
+                />
+              </View>
+            </View>
 
-          <SettingTimePicker
-            icon={<LogOut size={18} color={colors.mutedForeground} />}
-            label="End Time"
-            timeValue={settings.endTime}
-            onChange={(v: string) => setSettings({ ...settings, endTime: v })}
-            colors={colors}
-          />
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-          <SettingPicker
-            icon={<Coffee size={18} color={colors.mutedForeground} />}
-            label="Break Hours"
-            selectedValue={settings.breakHours}
-            onValueChange={(v: string) => setSettings({ ...settings, breakHours: v })}
-            options={[
-              { label: '0 Hours', value: '0' },
-              { label: '0.5 Hours', value: '0.5' },
-              { label: '1 Hour', value: '1' },
-              { label: '1.5 Hours', value: '1.5' },
-              { label: '2 Hours', value: '2' },
-            ]}
-            colors={colors}
-          />
+            <View style={styles.settingItem}>
+              <View style={styles.settingIconText}>
+                <Globe size={20} color={colors.mutedForeground} />
+                <Text style={[styles.settingLabel, { color: colors.foreground }]}>App Timezone</Text>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginLeft: 10 }}>
+                <View style={styles.timezoneList}>
+                  {TIMEZONES.map(tz => (
+                    <TouchableOpacity
+                      key={tz.value}
+                      onPress={() => setTimezone(tz.value)}
+                      style={[
+                        styles.tzBadge,
+                        { backgroundColor: timezone === tz.value ? colors.primary + '20' : colors.muted },
+                        timezone === tz.value && { borderColor: colors.primary, borderWidth: 1 }
+                      ]}
+                    >
+                      <Text style={[styles.tzText, { color: timezone === tz.value ? colors.primary : colors.mutedForeground }]}>
+                        {tz.label.split(' ')[0]}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+            </View>
 
-          <SettingPicker
-            icon={<Globe size={18} color={colors.mutedForeground} />}
-            label="Timezone"
-            selectedValue={settings.timezone}
-            onValueChange={(v: string) => setSettings({ ...settings, timezone: v })}
-            options={[
-              { label: 'Asia/Kolkata', value: 'Asia/Kolkata' },
-              { label: 'America/New_York', value: 'America/New_York' },
-              { label: 'America/Los_Angeles', value: 'America/Los_Angeles' },
-              { label: 'Europe/London', value: 'Europe/London' },
-              { label: 'Europe/Paris', value: 'Europe/Paris' },
-              { label: 'Australia/Sydney', value: 'Australia/Sydney' },
-              { label: 'UTC', value: 'UTC' }
-            ]}
-            colors={colors}
-          />
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-          <TouchableOpacity 
-            style={[styles.saveButton, { backgroundColor: colors.primary }, saving && styles.disabledButton]} 
-            onPress={saveSettings}
-            disabled={saving}
-            activeOpacity={0.8}
-          >
-            <Save size={18} color="#fff" />
-            <Text style={styles.saveButtonText}>{saving ? 'Saving...' : 'Sync Settings'}</Text>
-          </TouchableOpacity>
+            <View style={styles.sectionHeader}>
+               <CalendarDays size={18} color={colors.mutedForeground} />
+               <Text style={[styles.settingLabel, { color: colors.foreground, marginLeft: 12 }]}>Weekly Holidays</Text>
+            </View>
+            <View style={styles.holidayGrid}>
+              {DAYS.map(day => (
+                <TouchableOpacity
+                  key={day.value}
+                  onPress={() => toggleHoliday(day.value)}
+                  style={[
+                    styles.dayButton,
+                    { backgroundColor: weeklyHolidays.includes(day.value) ? colors.primary : colors.muted }
+                  ]}
+                >
+                  <Text style={[styles.dayText, { color: weeklyHolidays.includes(day.value) ? '#fff' : colors.mutedForeground }]}>
+                    {day.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity 
+              style={[styles.saveButton, { backgroundColor: colors.primary }]}
+              onPress={saveSettings}
+              disabled={saving}
+            >
+              {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.saveButtonText}>Save Rules & Sync</Text>}
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>ACCOUNT</Text>
-          <TouchableOpacity style={styles.menuItem}>
-            <View style={[styles.iconBox, { backgroundColor: colors.muted }]}>
-              <Shield size={18} color={colors.mutedForeground} />
+        {/* Preferences Section */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>PREFERENCES</Text>
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.settingItem}>
+              <View style={styles.settingIconText}>
+                <Moon size={20} color={colors.mutedForeground} />
+                <Text style={[styles.settingLabel, { color: colors.foreground }]}>Dark Mode</Text>
+              </View>
+              <Switch value={theme === 'dark'} onValueChange={toggleTheme} trackColor={{ false: '#767577', true: colors.primary }} />
             </View>
-            <Text style={[styles.menuText, { color: colors.foreground }]}>Privacy & Security</Text>
-            <ChevronRight size={16} color={colors.mutedForeground} style={{ marginLeft: 'auto' }} />
-          </TouchableOpacity>
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+            <TouchableOpacity style={styles.settingItem} onPress={() => Linking.openURL('https://github.com/whoismidlaj')}>
+              <View style={styles.settingIconText}>
+                <HelpCircle size={20} color={colors.mutedForeground} />
+                <Text style={[styles.settingLabel, { color: colors.foreground }]}>Help & Guide</Text>
+              </View>
+              <ChevronRight size={20} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* App Info & Developer Credits */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>SYNC STATUS</Text>
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <TouchableOpacity style={styles.settingItem} onPress={clearPendingSyncs}>
+              <View style={styles.settingIconText}>
+                <Shield size={20} color={colors.destructive} />
+                <View>
+                  <Text style={[styles.settingLabel, { color: colors.foreground }]}>Reset Sync Queue</Text>
+                  <Text style={[styles.subLabel, { color: colors.mutedForeground }]}>Use if app is stuck "Syncing"</Text>
+                </View>
+              </View>
+              <ChevronRight size={20} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.creditsSection}>
+            <Text style={[styles.versionText, { color: colors.mutedForeground }]}>v1.2.0 Seamless</Text>
+            <TouchableOpacity 
+              onPress={() => Linking.openURL('https://midlaj.com')}
+              style={styles.creditsLink}
+            >
+              <Text style={[styles.creditsText, { color: colors.mutedForeground }]}>
+                built by <Text style={{ color: colors.primary, fontWeight: '700' }}>@whoismidlaj</Text>
+              </Text>
+              <ExternalLink size={10} color={colors.primary} />
+            </TouchableOpacity>
         </View>
 
         <TouchableOpacity 
-          style={[styles.logoutButton, { backgroundColor: colors.destructive + '10', borderColor: colors.destructive + '20' }]} 
+          style={[styles.logoutButton, { borderColor: colors.destructive }]} 
           onPress={handleLogout}
         >
           <LogOut size={20} color={colors.destructive} />
           <Text style={[styles.logoutText, { color: colors.destructive }]}>Sign Out</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.logoutButton, { backgroundColor: colors.muted, borderColor: colors.border, marginTop: 12 }]} 
-          onPress={clearSyncCache}
-        >
-          <RefreshCw size={20} color={colors.foreground} />
-          <Text style={[styles.logoutText, { color: colors.foreground }]}>Reset Local Cache</Text>
-        </TouchableOpacity>
-        
-        <Text style={[styles.versionText, { color: colors.mutedForeground }]}>TimeTrack Mobile v1.5.0</Text>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function SettingTimePicker({ icon, label, timeValue, onChange, colors }: any) {
-  const [show, setShow] = useState(false);
-
-  // Convert "HH:mm" to Date object
-  const timeParts = timeValue.split(':');
-  const dateObj = new Date();
-  dateObj.setHours(parseInt(timeParts[0] || '9', 10));
-  dateObj.setMinutes(parseInt(timeParts[1] || '0', 10));
-
-  const handleDateChange = (event: any, selectedDate?: Date) => {
-    if (Platform.OS === 'android') setShow(false);
-    if (selectedDate) {
-      const hh = selectedDate.getHours().toString().padStart(2, '0');
-      const mm = selectedDate.getMinutes().toString().padStart(2, '0');
-      onChange(`${hh}:${mm}`);
-    }
-  };
-
-  const handleDismiss = () => {
-    setShow(false);
-  };
-
-  return (
-    <View style={styles.settingItem}>
-      <View style={styles.settingInfo}>
-        <View style={[styles.iconBox, { backgroundColor: colors.muted }]}>
-          {icon}
-        </View>
-        <Text style={[styles.settingLabel, { color: colors.foreground }]}>{label}</Text>
-      </View>
-      <TouchableOpacity 
-        style={[styles.settingInput, { backgroundColor: colors.muted, borderColor: colors.border, justifyContent: 'center' }]}
-        onPress={() => setShow(true)}
-      >
-        <Text style={{ color: colors.foreground, fontWeight: '600' }}>{timeValue}</Text>
-      </TouchableOpacity>
-      
-      {show && (
-        <DateTimePicker
-          value={dateObj}
-          mode="time"
-          is24Hour={true}
-          display="default"
-          onValueChange={handleDateChange}
-          onDismiss={handleDismiss}
-        />
-      )}
-    </View>
-  );
-}
-
-function SettingPicker({ icon, label, selectedValue, onValueChange, options, colors }: any) {
-  return (
-    <View style={styles.settingItem}>
-      <View style={styles.settingInfo}>
-        <View style={[styles.iconBox, { backgroundColor: colors.muted }]}>
-          {icon}
-        </View>
-        <Text style={[styles.settingLabel, { color: colors.foreground }]}>{label}</Text>
-      </View>
-      <View style={[styles.settingInput, { backgroundColor: colors.muted, borderColor: colors.border, paddingHorizontal: 0 }]}>
-        <Picker
-          selectedValue={selectedValue}
-          onValueChange={onValueChange}
-          style={{ flex: 1, color: colors.foreground, height: 48, marginTop: -4 }}
-          dropdownIconColor={colors.mutedForeground}
-        >
-          {options.map((opt: any) => (
-            <Picker.Item key={opt.value} label={opt.label} value={opt.value} style={{ fontSize: 13 }} />
-          ))}
-        </Picker>
-      </View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  avatarContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-    overflow: 'hidden',
-    borderWidth: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  avatar: {
-    width: '100%',
-    height: '100%',
-  },
-  name: {
-    fontSize: 24,
-    fontWeight: '800',
-    letterSpacing: -1,
-  },
-  email: {
-    fontSize: 14,
-    marginTop: 4,
-    fontWeight: '500',
-  },
-  section: {
-    marginHorizontal: 24,
-    marginBottom: 24,
-    padding: 24,
-    borderRadius: 28,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.02,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  sectionTitle: {
-    fontSize: 10,
-    fontWeight: '800',
-    marginBottom: 24,
-    letterSpacing: 2,
-  },
-  settingItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  settingInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  iconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  settingLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  settingInput: {
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 14,
-    fontWeight: '700',
-    minWidth: 100,
-    textAlign: 'right',
-    borderWidth: 1,
-  },
-  saveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    paddingVertical: 16,
-    borderRadius: 18,
-    marginTop: 12,
-    shadowColor: '#10b981',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  disabledButton: {
-    opacity: 0.6,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  menuText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    marginHorizontal: 24,
-    marginTop: 8,
-    marginBottom: 32,
-    paddingVertical: 18,
-    borderRadius: 22,
-    borderWidth: 1,
-  },
-  logoutText: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  versionText: {
-    textAlign: 'center',
-    marginBottom: 48,
-    fontSize: 12,
-    fontWeight: '600',
-  },
+  container: { flex: 1 },
+  centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  scrollContent: { padding: 20 },
+  header: { alignItems: 'center', marginBottom: 30 },
+  avatar: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+  avatarText: { fontSize: 32, fontWeight: '800' },
+  name: { fontSize: 24, fontWeight: '800', marginBottom: 4 },
+  email: { fontSize: 14, fontWeight: '500' },
+  section: { marginBottom: 24 },
+  sectionTitle: { fontSize: 11, fontWeight: '800', letterSpacing: 1, marginBottom: 12, marginLeft: 4 },
+  card: { borderRadius: 20, borderWidth: 1, overflow: 'hidden', paddingVertical: 8 },
+  settingItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },
+  settingIconText: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  settingLabel: { fontSize: 15, fontWeight: '600' },
+  subLabel: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
+  divider: { height: 1, marginHorizontal: 16 },
+  timeInputs: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  timeInput: { width: 70, height: 36, borderRadius: 10, textAlign: 'center', fontSize: 13, fontWeight: '800' },
+  timezoneList: { flexDirection: 'row', gap: 8, paddingRight: 16 },
+  tzBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
+  tzText: { fontSize: 12, fontWeight: '700' },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 16, marginBottom: 12 },
+  holidayGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, marginBottom: 16 },
+  dayButton: { width: 38, height: 38, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  dayText: { fontSize: 13, fontWeight: '800' },
+  saveButton: { marginHorizontal: 16, marginBottom: 12, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  saveButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  creditsSection: { alignItems: 'center', marginVertical: 30, gap: 6 },
+  versionText: { fontSize: 11, fontWeight: '700', opacity: 0.6 },
+  creditsLink: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  creditsText: { fontSize: 12, fontWeight: '600' },
+  logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 16, borderRadius: 16, borderWidth: 1, marginTop: 10, marginBottom: 40 },
+  logoutText: { fontSize: 16, fontWeight: '700' }
 });

@@ -2,8 +2,8 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
 // Production API URL
-const API_URL = 'https://timetracker.onlyfrens.fun/api';
-// const API_URL = 'http://192.168.10.218:3000/api';
+// const API_URL = 'https://timetracker.onlyfrens.fun/api';
+export const API_URL = 'http://192.168.10.218:3000/api';
 
 let onAuthError: (() => void) | null = null;
 

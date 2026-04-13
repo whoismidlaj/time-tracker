@@ -1,35 +1,54 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity, SectionList, SafeAreaView } from 'react-native';
-import { Calendar, Clock, ChevronRight, Plus, Coffee, PenSquare } from 'lucide-react-native';
-import { useRouter, Stack } from 'expo-router';
+import { View, Text, StyleSheet, RefreshControl, ActivityIndicator, TouchableOpacity, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Calendar as CalendarIcon, Clock, ChevronRight, ChevronLeft } from 'lucide-react-native';
+import { Stack } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
+import { startOfMonth, subMonths, addMonths, format, isSameMonth } from 'date-fns';
 import api from '../../lib/api';
 import { useTheme } from '../../context/ThemeContext';
-import SessionDetailModal from '../../components/SessionDetailModal';
-import EditSessionModal from '../../components/EditSessionModal';
+import { MonthlyHeatmap } from '../../components/MonthlyHeatmap';
+import { MonthlyReportCard } from '../../components/MonthlyReportCard';
+import { DayDetailsModal } from '../../components/DayDetailsModal';
 import { 
-  formatDuration, 
   formatDate, 
   formatTime, 
   formatShortDuration,
-  calcSessionDurationMs,
-  calcTotalBreakMs 
+  calcSessionDurationMs 
 } from '../../lib/utils';
+
+const DEFAULT_HOLIDAYS = ["0", "6"];
 
 export default function HistoryScreen() {
   const { colors, theme } = useTheme();
+  
+  // Data State
   const [sessions, setSessions] = useState<any[]>([]);
+  const [leaves, setLeaves] = useState<any[]>([]);
+  const [settings, setSettings] = useState({ weeklyHolidays: DEFAULT_HOLIDAYS });
+  const [selectedMonth, setSelectedMonth] = useState(new Date());
+  
+  // UI State
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
-  
-  // Modal states
-  const [detailVisible, setDetailVisible] = useState(false);
-  const [editVisible, setEditVisible] = useState(false);
-  const [selectedSession, setSelectedSession] = useState<any>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
-  const fetchHistory = useCallback(async () => {
+  const fetchHistory = useCallback(async (date: Date) => {
     try {
-      const { data } = await api.get('/history?type=recent&limit=50');
+      const month = date.getMonth() + 1;
+      const year = date.getFullYear();
+      
+      // Load Settings
+      const savedSettings = await SecureStore.getItemAsync('appSettings');
+      if (savedSettings) {
+          const parsed = JSON.parse(savedSettings);
+          setSettings({ weeklyHolidays: parsed.weeklyHolidays || DEFAULT_HOLIDAYS });
+      }
+
+      const { data } = await api.get(`/history?month=${month}&year=${year}`);
       setSessions(data.sessions || []);
+      setLeaves(data.leaves || []);
     } catch (err) {
       console.error('Fetch history error:', err);
     } finally {
@@ -39,116 +58,46 @@ export default function HistoryScreen() {
   }, []);
 
   useEffect(() => {
-    fetchHistory();
-  }, [fetchHistory]);
+    fetchHistory(selectedMonth);
+  }, [selectedMonth, fetchHistory]);
 
-  const groupedSessions = useMemo(() => {
-    const groups: { [key: string]: { title: string, data: any[], totalMs: number } } = {};
-    
-    sessions.forEach(session => {
-      const dateKey = formatDate(session.punch_in_time);
-      if (!groups[dateKey]) {
-        groups[dateKey] = { title: dateKey, data: [], totalMs: 0 };
-      }
-      
-      const durationMs = session.punch_out_time 
-        ? calcSessionDurationMs(session, session.breaks) 
-        : 0;
-        
-      groups[dateKey].data.push(session);
-      groups[dateKey].totalMs += durationMs;
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchHistory(selectedMonth);
+  }, [selectedMonth, fetchHistory]);
+
+  const isCurrentMonth = useMemo(() => isSameMonth(selectedMonth, new Date()), [selectedMonth]);
+  
+  const handlePrev = () => {
+    setLoading(true);
+    setSelectedMonth(prev => subMonths(prev, 1));
+  };
+  
+  const handleNext = () => {
+    if (!isCurrentMonth) {
+        setLoading(true);
+        setSelectedMonth(prev => addMonths(prev, 1));
+    }
+  };
+
+  const handleDayPress = (day: Date) => {
+    setSelectedDay(day);
+    setIsModalOpen(true);
+  };
+
+  const selectedLeave = useMemo(() => {
+    if (!selectedDay) return null;
+    return leaves.find(l => {
+      const d = new Date(l.leave_date);
+      return d.getFullYear() === selectedDay.getFullYear() && 
+             d.getMonth() === selectedDay.getMonth() && 
+             d.getDate() === selectedDay.getDate();
     });
+  }, [selectedDay, leaves]);
 
-    return Object.values(groups);
+  const recentSessions = useMemo(() => {
+    return sessions.slice(0, 5).sort((a, b) => new Date(b.punch_in_time).getTime() - new Date(a.punch_in_time).getTime());
   }, [sessions]);
-
-  const handleSessionPress = (session: any) => {
-    setSelectedSession(session);
-    setDetailVisible(true);
-  };
-
-  const handleEditPress = (session: any) => {
-    setSelectedSession(session);
-    setDetailVisible(false);
-    setEditVisible(true);
-  };
-
-  const handleManualEntry = () => {
-    setSelectedSession(null);
-    setEditVisible(true);
-  };
-
-  const renderSession = ({ item }: { item: any }) => {
-    const isActive = !item.punch_out_time;
-    const durationMs = item.punch_out_time ? calcSessionDurationMs(item, item.breaks) : 0;
-    const breakMs = calcTotalBreakMs(item.breaks || []);
-
-    return (
-      <TouchableOpacity 
-        style={[
-          styles.sessionCard, 
-          { backgroundColor: colors.card, borderColor: colors.border },
-          isActive && { backgroundColor: theme === 'light' ? '#f0fdf4' : '#065f4620', borderColor: theme === 'light' ? '#dcfce7' : '#065f4650' }
-        ]}
-        activeOpacity={0.7}
-        onPress={() => handleSessionPress(item)}
-      >
-        <View style={styles.sessionInfo}>
-          <View style={styles.timeHeader}>
-            <Text style={[styles.timeRange, { color: colors.foreground }]}>
-              {formatTime(item.punch_in_time)} — {item.punch_out_time ? formatTime(item.punch_out_time) : 'Ongoing'}
-            </Text>
-            {isActive && (
-              <View style={styles.activeBadge}>
-                <Text style={styles.activeBadgeText}>ACTIVE</Text>
-              </View>
-            )}
-          </View>
-          
-          <View style={styles.metaRow}>
-            <View style={styles.metaItem}>
-              <Clock size={12} color={colors.mutedForeground} />
-              <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>WORK</Text>
-              <Text style={[styles.metaValue, { color: colors.foreground }]}>
-                {isActive ? '—' : formatShortDuration(durationMs)}
-              </Text>
-            </View>
-            {breakMs > 0 && (
-              <View style={styles.metaItem}>
-                <Coffee size={12} color={colors.mutedForeground} />
-                <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>BREAK</Text>
-                <Text style={[styles.metaValue, { color: colors.foreground }]}>{formatShortDuration(breakMs)}</Text>
-              </View>
-            )}
-          </View>
-
-          {item.notes && (
-            <Text style={[styles.notesPreview, { color: colors.mutedForeground, borderLeftColor: colors.border }]} numberOfLines={1}>
-              {item.notes}
-            </Text>
-          )}
-        </View>
-        <ChevronRight size={16} color={colors.mutedForeground} />
-      </TouchableOpacity>
-    );
-  };
-
-  const renderSectionHeader = ({ section }: { section: any }) => (
-    <View style={styles.sectionHeader}>
-      <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>{section.title}</Text>
-      <View style={[styles.sectionTotal, { backgroundColor: colors.primary + '15', borderColor: colors.primary + '10' }]}>
-        <Text style={[styles.sectionTotalText, { color: colors.primary }]}>{formatShortDuration(section.totalMs)}</Text>
-      </View>
-    </View>
-  );
-
-  if (loading && !refreshing) {
-    return (
-      <View style={[styles.centerContainer, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -157,56 +106,128 @@ export default function HistoryScreen() {
           headerShown: true,
           headerStyle: { backgroundColor: colors.background },
           headerTitleStyle: { color: colors.foreground, fontWeight: '800' },
-          headerTitle: 'Activity History',
+          headerTitle: 'Analytics & Logs',
           headerShadowVisible: false,
-          headerRight: () => (
-            <TouchableOpacity 
-              onPress={handleManualEntry}
-              style={[styles.headerButton, { backgroundColor: colors.primary + '15' }]}
-            >
-              <Plus size={18} color={colors.primary} />
-              <Text style={[styles.headerButtonText, { color: colors.primary }]}>Manual</Text>
-            </TouchableOpacity>
-          )
         }} 
       />
       
-      <SectionList
-        sections={groupedSessions}
-        renderItem={renderSession}
-        renderSectionHeader={renderSectionHeader}
-        keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={styles.listContent}
-        stickySectionHeadersEnabled={false}
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl 
             refreshing={refreshing} 
-            onRefresh={() => { setRefreshing(true); fetchHistory(); }} 
+            onRefresh={onRefresh} 
             tintColor={colors.primary}
           />
         }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Calendar size={48} color={colors.mutedForeground + '40'} />
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No sessions found yet</Text>
+      >
+        {/* Month Navigator */}
+        <View style={styles.monthNavigator}>
+          <TouchableOpacity 
+            onPress={handlePrev}
+            style={[styles.navButton, { backgroundColor: colors.muted }]}
+          >
+            <ChevronLeft size={20} color={colors.foreground} />
+          </TouchableOpacity>
+          
+          <View style={styles.monthTitleContainer}>
+            <Text style={[styles.monthLabel, { color: colors.mutedForeground }]}>
+                {format(selectedMonth, 'yyyy')}
+            </Text>
+            <Text style={[styles.monthTitle, { color: colors.foreground }]}>
+                {format(selectedMonth, 'MMMM')}
+            </Text>
           </View>
-        }
-      />
 
-      {/* Modals */}
-      <SessionDetailModal 
-        session={selectedSession}
-        visible={detailVisible}
-        onClose={() => setDetailVisible(false)}
-        onEdit={handleEditPress}
-        onRefresh={fetchHistory}
-      />
+          <TouchableOpacity 
+            onPress={handleNext}
+            disabled={isCurrentMonth}
+            style={[styles.navButton, { backgroundColor: colors.muted, opacity: isCurrentMonth ? 0.3 : 1 }]}
+          >
+            <ChevronRight size={20} color={colors.foreground} />
+          </TouchableOpacity>
+        </View>
 
-      <EditSessionModal 
-        session={selectedSession}
-        visible={editVisible}
-        onClose={() => setEditVisible(false)}
-        onRefresh={fetchHistory}
+        {loading ? (
+            <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>Crunching logs...</Text>
+            </View>
+        ) : (
+            <View style={styles.statsContainer}>
+                <MonthlyReportCard 
+                    monthDate={selectedMonth}
+                    sessions={sessions}
+                    leaves={leaves}
+                    weeklyHolidays={settings.weeklyHolidays}
+                />
+
+                <View style={styles.sectionHeader}>
+                    <View style={styles.sectionTitleGroup}>
+                        <CalendarIcon size={14} color={colors.mutedForeground} />
+                        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Activity Heatmap</Text>
+                    </View>
+                    <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>TAP ANY DAY</Text>
+                </View>
+
+                <MonthlyHeatmap 
+                    monthDate={selectedMonth}
+                    sessions={sessions}
+                    leaves={leaves}
+                    weeklyHolidays={settings.weeklyHolidays}
+                    onDayPress={handleDayPress}
+                />
+
+                <View style={styles.sectionHeader}>
+                    <View style={styles.sectionTitleGroup}>
+                        <Clock size={14} color={colors.mutedForeground} />
+                        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Recent Logs</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => alert('Daily logs are now accessible by tapping days in the calendar!')}>
+                        <Text style={[styles.viewMore, { color: colors.primary }]}>How to view all?</Text>
+                    </TouchableOpacity>
+                </View>
+
+                <View style={styles.sessionsList}>
+                    {recentSessions.length === 0 ? (
+                        <View style={styles.emptySessions}>
+                            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No activity this month</Text>
+                        </View>
+                    ) : (
+                        recentSessions.map((item) => (
+                            <TouchableOpacity 
+                                key={item.id}
+                                style={[styles.sessionCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                                onPress={() => handleDayPress(new Date(item.punch_in_time))}
+                            >
+                                <View style={styles.sessionInfo}>
+                                    <View style={styles.sessionHeaderRow}>
+                                        <Text style={[styles.sessionDate, { color: colors.foreground }]}>{formatDate(item.punch_in_time)}</Text>
+                                        <Text style={[styles.sessionDuration, { color: colors.mutedForeground }]}>
+                                            {formatShortDuration(calcSessionDurationMs(item, item.breaks))}
+                                        </Text>
+                                    </View>
+                                    <Text style={[styles.sessionTime, { color: colors.mutedForeground }]}>
+                                        {formatTime(item.punch_in_time)} — {item.punch_out_time ? formatTime(item.punch_out_time) : 'Ongoing'}
+                                    </Text>
+                                </View>
+                                <ChevronRight size={16} color={colors.mutedForeground} />
+                            </TouchableOpacity>
+                        ))
+                    )}
+                </View>
+            </View>
+        )}
+      </ScrollView>
+
+      <DayDetailsModal 
+        visible={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        day={selectedDay}
+        sessions={sessions}
+        leave={selectedLeave}
+        onRefresh={() => fetchHistory(selectedMonth)}
       />
     </SafeAreaView>
   );
@@ -216,127 +237,119 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  centerContainer: {
-    flex: 1,
+  scrollContent: {
+    paddingBottom: 40,
+    paddingHorizontal: 24,
+  },
+  monthNavigator: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginVertical: 20,
+    paddingHorizontal: 4,
+  },
+  navButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerButton: {
-    flexDirection: 'row',
+  monthTitleContainer: {
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    marginRight: 16,
   },
-  headerButtonText: {
-    fontSize: 12,
+  monthLabel: {
+    fontSize: 10,
     fontWeight: '800',
+    letterSpacing: 1,
+    opacity: 0.5,
+    marginBottom: 2,
   },
-  listContent: {
-    paddingHorizontal: 24,
-    paddingTop: 8,
-    paddingBottom: 40,
-    gap: 16,
+  monthTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  loadingContainer: {
+    paddingVertical: 100,
+    alignItems: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  statsContainer: {
+    gap: 8,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
     marginTop: 20,
+    marginBottom: 10,
     paddingHorizontal: 4,
   },
+  sectionTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   sectionTitle: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
     textTransform: 'uppercase',
-    letterSpacing: 1.5,
+    letterSpacing: 1,
   },
-  sectionTotal: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  sectionTotalText: {
-    fontSize: 11,
+  sectionHint: {
+    fontSize: 8,
     fontWeight: '800',
+    letterSpacing: 1.5,
+    opacity: 0.4,
+  },
+  viewMore: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  sessionsList: {
+    gap: 10,
   },
   sessionCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 20,
-    borderRadius: 24,
+    padding: 16,
+    borderRadius: 20,
     borderWidth: 1,
     gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 8,
-    elevation: 2,
   },
   sessionInfo: {
     flex: 1,
-    gap: 10,
+    gap: 4,
   },
-  timeHeader: {
+  sessionHeaderRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+    justifyContent: 'space-between',
   },
-  timeRange: {
-    fontSize: 16,
+  sessionDate: {
+    fontSize: 14,
     fontWeight: '700',
-    fontVariant: ['tabular-nums'],
   },
-  activeBadge: {
-    backgroundColor: '#10b981',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  activeBadgeText: {
-    fontSize: 8,
-    fontWeight: '900',
-    color: '#fff',
-    letterSpacing: 0.5,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    gap: 20,
-  },
-  metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  metaLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  metaValue: {
+  sessionDuration: {
     fontSize: 12,
-    fontWeight: '700',
-  },
-  notesPreview: {
-    fontSize: 13,
-    fontStyle: 'italic',
-    marginTop: 4,
-    paddingLeft: 10,
-    borderLeftWidth: 2,
-    lineHeight: 18,
-  },
-  emptyContainer: {
-    paddingVertical: 120,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-  },
-  emptyText: {
-    fontSize: 15,
     fontWeight: '600',
   },
+  sessionTime: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  emptySessions: {
+    paddingVertical: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    fontSize: 13,
+    fontWeight: '500',
+    fontStyle: 'italic',
+  }
 });

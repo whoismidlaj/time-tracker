@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Play, Square, Coffee, Clock, MessageSquare, LogOut, RefreshCcw, Cloud, CloudOff } from 'lucide-react-native';
 import { Tabs } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
+import { getDay } from 'date-fns';
 import api from '../../lib/api';
 import SyncManager from '../../lib/SyncManager';
 import { useTheme } from '../../context/ThemeContext';
@@ -26,6 +27,7 @@ export default function TimerScreen() {
     session, 
     activeBreak, 
     breaks, 
+    serverOffset,
     refreshStatus,
     updateState
   } = useAuth();
@@ -39,6 +41,12 @@ export default function TimerScreen() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   
   const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  // Weekend / Holiday detection
+  const isHoliday = useMemo(() => {
+    if (!settings?.weeklyHolidays) return false;
+    return settings.weeklyHolidays.includes(getDay(new Date()).toString());
+  }, [settings?.weeklyHolidays]);
 
   // Pulse animation for active status
   useEffect(() => {
@@ -71,7 +79,7 @@ export default function TimerScreen() {
       setLoading(false);
     };
     init();
-  }, []);
+  }, [session?.notes]);
 
   // Update local notes when session changes (from sync)
   useEffect(() => {
@@ -90,7 +98,8 @@ export default function TimerScreen() {
     if (timerRef.current) clearInterval(timerRef.current);
     if (session && (status === 'working' || status === 'break')) {
       const update = () => {
-        setElapsed(calcSessionDurationMs(session, breaks));
+        const nowMs = Date.now() - serverOffset;
+        setElapsed(calcSessionDurationMs(session, breaks, nowMs));
       };
       update();
       timerRef.current = setInterval(update, 1000);
@@ -138,7 +147,6 @@ export default function TimerScreen() {
       breaks: newBreaks
     });
 
-    // --- Queue for Background Sync ---
     const endpoint = (actionType === 'punch_in' || actionType === 'punch_out') ? '/session' : '/break';
     const actionPayload = {
       action: actionType === 'start_break' ? 'start' : actionType === 'end_break' ? 'end' : actionType,
@@ -189,16 +197,19 @@ export default function TimerScreen() {
       text = 'Offline Mode';
       color = '#f59e0b';
     } else if (syncStatus === 'error') {
-      Icon = CloudOff;
-      text = 'Sync Error';
+      Icon = LogOut;
+      text = 'Sign In Required';
       color = colors.destructive;
     }
 
     return (
-      <View style={[styles.syncIndicator, { backgroundColor: color + '10' }]}>
+      <TouchableOpacity 
+        onPress={() => syncStatus === 'error' && refreshStatus()}
+        style={[styles.syncIndicator, { backgroundColor: color + (theme === 'light' ? '15' : '25') }]}
+      >
         <Icon size={12} color={color} />
         <Text style={[styles.syncText, { color }]}>{text}</Text>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -249,14 +260,12 @@ export default function TimerScreen() {
           }
         >
           <View style={styles.mainContent}>
-            {/* Redesigned Card */}
             <View style={[
               styles.statusCard,
               { backgroundColor: colors.card, borderColor: colors.border },
               isWorking && { backgroundColor: theme === 'light' ? '#f0fdf4' : '#064e3b20', borderColor: theme === 'light' ? '#dcfce7' : '#065f4650' },
               isBreak && { backgroundColor: theme === 'light' ? '#fffbeb' : '#451a0320', borderColor: theme === 'light' ? '#fef3c7' : '#78350f50' }
             ]}>
-              {/* Ambient Glow */}
               <View style={[
                 styles.ambientGlow,
                 { backgroundColor: isWorking ? '#10b981' : isBreak ? '#f59e0b' : colors.mutedForeground, opacity: theme === 'light' ? 0.05 : 0.1 }
@@ -274,20 +283,20 @@ export default function TimerScreen() {
                     )}
                     <View style={[
                       styles.statusDot, 
-                      { backgroundColor: isWorking ? '#10b981' : isBreak ? '#f59e0b' : colors.mutedForeground }
+                      { backgroundColor: isWorking ? '#10b981' : isBreak ? '#f59e0b' : isHoliday ? '#14b8a6' : colors.mutedForeground }
                     ]} />
                   </View>
                   <View style={[
                     styles.badge, 
-                    { backgroundColor: isWorking ? '#dcfce7' : isBreak ? '#fef3c7' : colors.muted },
-                    theme === 'dark' && { backgroundColor: isWorking ? '#065f4640' : isBreak ? '#78350f40' : colors.muted }
+                    { backgroundColor: isWorking ? '#dcfce7' : isBreak ? '#fef3c7' : isHoliday ? '#ccfbf1' : colors.muted },
+                    theme === 'dark' && { backgroundColor: isWorking ? '#065f4640' : isBreak ? '#78350f40' : isHoliday ? '#134e4a40' : colors.muted }
                   ]}>
                     <Text style={[
                       styles.statusLabel, 
-                      { color: isWorking ? '#166534' : isBreak ? '#92400e' : colors.mutedForeground, paddingHorizontal: 4 },
-                      theme === 'dark' && { color: isWorking ? '#34d399' : isBreak ? '#fbbf24' : colors.mutedForeground }
+                      { color: isWorking ? '#166534' : isBreak ? '#92400e' : isHoliday ? '#0f766e' : colors.mutedForeground, paddingHorizontal: 4 },
+                      theme === 'dark' && { color: isWorking ? '#34d399' : isBreak ? '#fbbf24' : isHoliday ? '#2dd4bf' : colors.mutedForeground }
                     ]}>
-                      {status === 'off' ? 'Offline' : status === 'working' ? 'Working' : 'On Break'}
+                      {status === 'off' ? (isHoliday ? 'Weekend' : 'Offline') : status === 'working' ? 'Working' : 'On Break'}
                     </Text>
                   </View>
                 </View>
@@ -315,7 +324,6 @@ export default function TimerScreen() {
                 </Text>
               </View>
 
-              {/* Notes Input - Themed like Shadcn Textarea */}
               {!isOff && session && (
                 <View style={styles.notesContainer}>
                   <View style={styles.notesHeader}>
@@ -374,7 +382,9 @@ export default function TimerScreen() {
                       </View>
                       <View style={styles.officeRuleInfo}>
                         <Text style={[styles.ruleLabel, { color: colors.mutedForeground }]}>Total Stay</Text>
-                        <Text style={[styles.ruleValue, { color: colors.primary }]}>09:30 - 18:30 Rule</Text>
+                        <Text style={[styles.ruleValue, { color: colors.primary }]}>
+                          {settings?.startTime || '09:30'} - {settings?.endTime || '18:30'} Rule
+                        </Text>
                       </View>
                     </View>
                   )}
@@ -382,7 +392,6 @@ export default function TimerScreen() {
               )}
             </View>
 
-            {/* Controls */}
             <View style={styles.controlsWrapper}>
               {isOff ? (
                 <TouchableOpacity 
@@ -435,301 +444,50 @@ export default function TimerScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 32,
-    paddingHorizontal: 24,
-    paddingTop: 10,
-  },
-  greeting: {
-    fontSize: 13,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
-    marginBottom: 4,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    letterSpacing: -1,
-  },
-  syncIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  syncText: {
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  scrollContent: {
-    paddingBottom: 40,
-  },
-  centerContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mainContent: {
-    padding: 24,
-    gap: 24,
-  },
-  statusCard: {
-    borderRadius: 28,
-    padding: 24,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 3,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  ambientGlow: {
-    position: 'absolute',
-    top: -40,
-    right: -40,
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
-    zIndex: 1,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  dotContainer: {
-    width: 12,
-    height: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statusPing: {
-    position: 'absolute',
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    opacity: 0.4,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  statusLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  inTimeContainer: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-  },
-  inTimeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  timerDisplay: {
-    marginBottom: 28,
-    zIndex: 1,
-  },
-  timerText: {
-    fontSize: 52,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
-    letterSpacing: -2,
-    lineHeight: 56,
-  },
-  timerSubText: {
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 1.5,
-    marginTop: 8,
-    textTransform: 'uppercase',
-  },
-  notesContainer: {
-    marginTop: 12,
-    gap: 8,
-    zIndex: 1,
-  },
-  notesHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 2,
-  },
-  notesLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 1.2,
-  },
-  notesInput: {
-    borderRadius: 14,
-    padding: 14,
-    fontSize: 13,
-    minHeight: 80,
-    textAlignVertical: 'top',
-    borderWidth: 1,
-    fontWeight: '500',
-  },
-  breakTimerRow: {
-    marginTop: 20,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    zIndex: 1,
-  },
-  breakTimerLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  breakTimerValue: {
-    fontSize: 20,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
-  },
-  metricsContainer: {
-    marginTop: 20,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    gap: 16,
-    zIndex: 1,
-  },
-  metricRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 2,
-  },
-  metricLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  metricValue: {
-    fontSize: 12,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-  },
-  exitTimeBox: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-  },
-  exitTimeInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  exitIconContainer: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  exitLabel: {
-    fontSize: 8,
-    fontWeight: '800',
-    letterSpacing: 1,
-    marginBottom: 1,
-  },
-  exitValue: {
-    fontSize: 15,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
-  },
-  officeRuleInfo: {
-    alignItems: 'flex-end',
-  },
-  ruleLabel: {
-    fontSize: 8,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  ruleValue: {
-    fontSize: 10,
-    fontWeight: '800',
-    marginTop: 1,
-  },
-  controlsWrapper: {
-    marginTop: 12,
-  },
-  primaryButton: {
-    height: 68,
-    borderRadius: 22,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  buttonIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryButtonText: {
-    fontSize: 18,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 14,
-  },
-  actionButton: {
-    flex: 1,
-    height: 64,
-    borderRadius: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  actionButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
+  container: { flex: 1 },
+  syncIndicator: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
+  syncText: { fontSize: 10, fontWeight: '800' },
+  scrollContent: { paddingBottom: 40 },
+  centerContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  mainContent: { padding: 24, gap: 24 },
+  statusCard: { borderRadius: 28, padding: 24, borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 3, overflow: 'hidden', position: 'relative' },
+  ambientGlow: { position: 'absolute', top: -40, right: -40, width: 120, height: 120, borderRadius: 60 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, zIndex: 1 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  dotContainer: { width: 12, height: 12, alignItems: 'center', justifyContent: 'center' },
+  statusPing: { position: 'absolute', width: 12, height: 12, borderRadius: 6, opacity: 0.4 },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  statusLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
+  inTimeContainer: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  inTimeText: { fontSize: 10, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  timerDisplay: { marginBottom: 28, zIndex: 1 },
+  timerText: { fontSize: 52, fontWeight: '800', fontVariant: ['tabular-nums'], letterSpacing: -2, lineHeight: 56 },
+  timerSubText: { fontSize: 9, fontWeight: '800', letterSpacing: 1.5, marginTop: 8, textTransform: 'uppercase' },
+  notesContainer: { marginTop: 12, gap: 8, zIndex: 1 },
+  notesHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 2 },
+  notesLabel: { fontSize: 9, fontWeight: '800', letterSpacing: 1.2 },
+  notesInput: { borderRadius: 14, padding: 14, fontSize: 13, minHeight: 80, textAlignVertical: 'top', borderWidth: 1, fontWeight: '500' },
+  breakTimerRow: { marginTop: 20, paddingTop: 16, borderTopWidth: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', zIndex: 1 },
+  breakTimerLabel: { fontSize: 9, fontWeight: '800', letterSpacing: 1 },
+  breakTimerValue: { fontSize: 20, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  metricsContainer: { marginTop: 20, paddingTop: 16, borderTopWidth: 1, gap: 16, zIndex: 1 },
+  metricRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 2 },
+  metricLabel: { fontSize: 9, fontWeight: '800', letterSpacing: 1 },
+  metricValue: { fontSize: 12, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  exitTimeBox: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderRadius: 18, padding: 14, borderWidth: 1 },
+  exitTimeInfo: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  exitIconContainer: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  exitLabel: { fontSize: 8, fontWeight: '800', letterSpacing: 1, marginBottom: 1 },
+  exitValue: { fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  officeRuleInfo: { alignItems: 'flex-end' },
+  ruleLabel: { fontSize: 8, fontWeight: '700', textTransform: 'uppercase' },
+  ruleValue: { fontSize: 10, fontWeight: '800', marginTop: 1 },
+  controlsWrapper: { marginTop: 12 },
+  primaryButton: { height: 68, borderRadius: 22, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 6 },
+  buttonIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  primaryButtonText: { fontSize: 18, fontWeight: '800', letterSpacing: 0.5 },
+  actionRow: { flexDirection: 'row', gap: 14 },
+  actionButton: { flex: 1, height: 64, borderRadius: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 4 },
+  actionButtonText: { fontSize: 16, fontWeight: '700' }
 });

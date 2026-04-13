@@ -2,8 +2,9 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import * as SecureStore from 'expo-secure-store';
 import { AppState, AppStateStatus } from 'react-native';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import EventSource from 'react-native-sse';
 import SyncManager, { LocalStatus } from '../lib/SyncManager';
-import api, { setAuthErrorCallback } from '../lib/api';
+import api, { setAuthErrorCallback, API_URL } from '../lib/api';
 
 type SyncStatus = 'synced' | 'syncing' | 'offline' | 'error';
 
@@ -16,11 +17,14 @@ interface AuthContextType {
   session: any;
   activeBreak: any;
   breaks: any[];
+  serverOffset: number;
   signIn: (token: string, user: any) => Promise<void>;
   signOut: () => Promise<void>;
   performAction: (action: any) => Promise<void>;
-  refreshStatus: () => Promise<void>;
+  refreshStatus: (force?: boolean) => Promise<void>;
+  refreshSettings: () => Promise<void>;
   updateState: (data: any) => void;
+  clearPendingSyncs: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -36,6 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<any>(null);
   const [activeBreak, setActiveBreak] = useState<any>(null);
   const [breaks, setBreaks] = useState<any[]>([]);
+  const [serverOffset, setServerOffset] = useState<number>(0);
 
   useEffect(() => {
     const loadAuth = async () => {
@@ -58,14 +63,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => setAuthErrorCallback(() => {});
   }, [isAuth]);
 
-  const refreshStatus = useCallback(async () => {
+  const refreshSettings = useCallback(async () => {
     if (!isAuth) return;
     try {
+      const { data } = await api.get('/user/settings');
+      if (data.settings && Object.keys(data.settings).length > 0) {
+        await SecureStore.setItemAsync('appSettings', JSON.stringify(data.settings));
+      }
+    } catch (err) {
+      console.warn('Settings sync failed');
+    }
+  }, [isAuth]);
+
+  const refreshStatus = useCallback(async (force = false) => {
+    if (!isAuth) return;
+    try {
+      // 1. If we have pending offline actions, SKIP refresh unless forced 
+      // This prevents background polling from clobbering optimistic UI
+      if (!force && await SyncManager.hasPendingActions()) {
+        console.log('Skipping background refresh: sync in progress');
+        return;
+      }
+
+      // 2. Sync settings first 
+      await refreshSettings();
+      
+      // 3. Fetch server status
       const { data } = await api.get('/status');
       setStatus(data.status || 'off');
       setSession(data.session || null);
       setActiveBreak(data.activeBreak || null);
       setBreaks(data.breaks || []);
+      if (data.server_time) {
+        setServerOffset(Date.now() - new Date(data.server_time).getTime());
+      }
       
       // Persist locally
       await SyncManager.saveLocalStatus({
@@ -78,7 +109,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       console.warn('Status refresh failed');
     }
-  }, [isAuth]);
+  }, [isAuth, refreshSettings]);
+
+  const clearPendingSyncs = async () => {
+    await SyncManager.clearQueue();
+    setSyncStatus('synced');
+    refreshStatus(true);
+  };
 
   // Sync Manager Success Listener
   useEffect(() => {
@@ -100,6 +137,90 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return unsubscribe;
   }, [status, session, activeBreak, breaks]);
 
+  // Sync Manager Failure/Refresh Listener
+  useEffect(() => {
+    const unsubscribe = SyncManager.subscribeRefresh(() => {
+      console.log('SyncManager requested a forced refresh');
+      refreshStatus(true);
+    });
+    return unsubscribe;
+  }, [refreshStatus]);
+
+  // Real-time Push Synchronization (SSE)
+  useEffect(() => {
+    if (!isAuth) return;
+
+    let eventSource: EventSource | null = null;
+
+    const setupSSE = async () => {
+      const token = await SecureStore.getItemAsync('userToken');
+      if (!token) return;
+
+      eventSource = new EventSource(`${API_URL}/sync/events`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      eventSource.addEventListener('status-update' as any, (event: any) => {
+        if (!event.data) return;
+        try {
+          const data = JSON.parse(event.data);
+          setStatus(data.status || 'off');
+          setSession(data.session || null);
+          setActiveBreak(data.activeBreak || null);
+          setBreaks(data.breaks || []);
+          if (data.server_time) {
+            setServerOffset(Date.now() - new Date(data.server_time).getTime());
+          }
+          
+          SyncManager.saveLocalStatus({
+            status: data.status,
+            session: data.session,
+            activeBreak: data.activeBreak,
+            breaks: data.breaks || [],
+            lastUpdated: Date.now()
+          });
+        } catch (err) {
+          console.warn('SSE Parse Error:', err);
+        }
+      });
+
+      eventSource.addEventListener('settings-update' as any, (event: any) => {
+        refreshSettings();
+      });
+
+      eventSource.addEventListener('error', (event: any) => {
+        console.warn('SSE Connection error, reconnecting...');
+        // EventSource automatically handles reconnection for standard errors
+      });
+    };
+
+    setupSSE();
+
+    return () => {
+      if (eventSource) eventSource.close();
+    };
+  }, [isAuth, refreshSettings]);
+
+  // Background Sync Loop (Offline-First reconciliation only)
+  useEffect(() => {
+    if (isAuth) {
+      refreshStatus(); // Initial sync on login
+      const interval = setInterval(async () => {
+        setSyncStatus('syncing');
+        try {
+          // Only perform the sync (pushing local actions to server)
+          await SyncManager.sync();
+          setSyncStatus('synced');
+        } catch (err) {
+          setSyncStatus('error');
+        }
+      }, 60000); // 1 minute safety check is enough with SSE active
+      return () => clearInterval(interval);
+    }
+  }, [isAuth, refreshStatus]);
+
   // AppState Foreground Refresh
   useEffect(() => {
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
@@ -109,23 +230,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     const subscription = AppState.addEventListener('change', handleAppStateChange);
     return () => subscription.remove();
-  }, [isAuth, refreshStatus]);
-
-  // Background Sync Loop
-  useEffect(() => {
-    if (isAuth) {
-      refreshStatus(); // Refresh on initial login
-      const interval = setInterval(async () => {
-        setSyncStatus('syncing');
-        try {
-          await SyncManager.sync();
-          setSyncStatus('synced');
-        } catch (err) {
-          setSyncStatus('error');
-        }
-      }, 10000); // Sync every 10s
-      return () => clearInterval(interval);
-    }
   }, [isAuth, refreshStatus]);
 
   const signIn = async (token: string, userData: any) => {
@@ -169,11 +273,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       session,
       activeBreak,
       breaks,
+      serverOffset,
       signIn, 
       signOut, 
       performAction,
       refreshStatus,
-      updateState
+      refreshSettings,
+      updateState,
+      clearPendingSyncs
     }}>
       {children}
     </AuthContext.Provider>
