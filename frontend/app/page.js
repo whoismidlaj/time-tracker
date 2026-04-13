@@ -1,0 +1,233 @@
+"use client";
+import { useState, useEffect, useCallback, useRef } from "react";
+import Link from "next/link";
+import { StatusCard } from "../components/StatusCard.jsx";
+import { getTimezone } from "../lib/config.js";
+import { PunchControls } from "../components/PunchControls.jsx";
+import { BreakControls } from "../components/BreakControls.jsx";
+import { DailySummary } from "../components/DailySummary.jsx";
+import { SessionHistory } from "../components/SessionHistory.jsx";
+import { AuthForm } from "../components/AuthForm.jsx";
+import { SettingsModal } from "../components/SettingsModal.jsx";
+import { UserNav } from "../components/UserNav.jsx";
+import { SyncManager } from "../components/SyncManager.jsx";
+import { calcSessionDurationMs, calcTotalBreakMs } from "../lib/utils.js";
+import { Clock } from "lucide-react";
+import { useAuth } from "../lib/auth-context.jsx";
+import { apiClient } from "../lib/api-client.js";
+import { useRouter } from "next/navigation";
+
+export default function HomePage() {
+  const { user, loading, refresh: authRefresh } = useAuth();
+  const router = useRouter();
+  const [status, setStatus] = useState("off");
+  const [session, setSession] = useState(null);
+  const [activeBreak, setActiveBreak] = useState(null);
+  const [breaks, setBreaks] = useState([]);
+  const [todaySessions, setTodaySessions] = useState([]);
+  const [allSessions, setAllSessions] = useState([]);
+  const [elapsed, setElapsed] = useState(0);
+  const [tick, setTick] = useState(0);
+  const [serverOffset, setServerOffset] = useState(0);
+  const timerRef = useRef(null);
+  
+  const fetchStatus = useCallback(async () => {
+    if (!user) {
+      setStatus('off');
+      setSession(null);
+      setActiveBreak(null);
+      setBreaks([]);
+      return;
+    }
+    try {
+      const res = await apiClient('/status');
+      if (!res.ok) throw new Error('Unauthorized');
+      const data = await res.json();
+      setStatus(data.status || 'off');
+      setSession(data.session || null);
+      setActiveBreak(data.activeBreak || null);
+      setBreaks(data.breaks || []);
+      if (data.server_time) {
+        setServerOffset(Date.now() - new Date(data.server_time).getTime());
+      }
+    } catch (e) {
+      console.error('Status fetch error:', e);
+      setStatus('off');
+      setSession(null);
+      setActiveBreak(null);
+      setBreaks([]);
+    }
+  }, [user]);
+
+  const fetchHistory = useCallback(async () => {
+    if (!user) {
+      setTodaySessions([]);
+      setAllSessions([]);
+      return;
+    }
+    try {
+      const localDate = new Date().toLocaleDateString('en-CA', { timeZone: getTimezone() });
+      const [todayRes, allRes] = await Promise.all([
+        apiClient(`/history?type=today&date=${localDate}`),
+        apiClient('/history?type=recent&limit=5'),
+      ]);
+      const todayData = await todayRes.json();
+      const allData = await allRes.json();
+      setTodaySessions(todayData.sessions || []);
+      setAllSessions(allData.sessions || []);
+    } catch (e) {
+      console.error('History fetch error:', e);
+      setTodaySessions([]);
+      setAllSessions([]);
+    }
+  }, [user]);
+
+  const refresh = useCallback(async () => {
+    await Promise.all([fetchStatus(), fetchHistory()]);
+  }, [fetchStatus, fetchHistory]);
+
+  // Load status/history after user resolves
+  useEffect(() => {
+    if (!user) return;
+    if (user.role === 'admin') {
+      router.replace('/admin');
+      return;
+    }
+    refresh();
+  }, [user, refresh, router]);
+
+  // Real-time Sync (SSE) - Sync with other devices instantly
+  useEffect(() => {
+    if (!user) return;
+    
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+    const eventSource = new EventSource(`${API_URL}/sync/events`, { withCredentials: true });
+
+    eventSource.onmessage = (event) => {
+      // Handle heartbeats (empty data)
+      if (!event.data) return;
+    };
+
+    eventSource.addEventListener('status-update', (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setStatus(data.status || 'off');
+        setSession(data.session || null);
+        setActiveBreak(data.activeBreak || null);
+        setBreaks(data.breaks || []);
+        if (data.server_time) {
+          setServerOffset(Date.now() - new Date(data.server_time).getTime());
+        }
+        // Also refresh history to update the "Recent Sessions" list
+        fetchHistory();
+      } catch (err) {
+        console.error('SSE status-update parse error:', err);
+      }
+    });
+
+    eventSource.addEventListener('settings-update', () => {
+      // Just trigger a full refresh if settings change
+      refresh();
+    });
+
+    eventSource.onerror = (err) => {
+      console.error('SSE Error, reconnecting...', err);
+      eventSource.close();
+    };
+
+    return () => eventSource.close();
+  }, [user, refresh, fetchHistory]);
+
+  // Live timer
+  useEffect(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (session && (status === "working" || status === "break")) {
+      const update = () => {
+        const nowMs = Date.now() - serverOffset;
+        setElapsed(calcSessionDurationMs(session, breaks, nowMs));
+        setTick(t => t + 1);
+      };
+      update();
+      timerRef.current = setInterval(update, 1000);
+    } else {
+      setElapsed(0);
+    }
+    return () => clearInterval(timerRef.current);
+  }, [session, status, breaks, activeBreak]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <div className="relative">
+            <Clock className="h-10 w-10 text-primary animate-pulse" />
+          </div>
+          <p className="text-sm text-muted-foreground font-medium">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthForm onAuthenticated={refresh} />;
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Main content */}
+      <main className="max-w-lg mx-auto px-4 py-4 space-y-4 pb-44">
+        {/* Status card */}
+        <StatusCard
+          status={status}
+          session={session}
+          activeBreak={activeBreak}
+          breaks={breaks}
+          elapsed={elapsed}
+          onRefresh={refresh}
+        />
+
+        <SyncManager onSyncComplete={refresh} />
+
+        {/* Daily summary */}
+        <DailySummary
+          todaySessions={todaySessions}
+          activeSession={session}
+          activeSessionBreaks={breaks}
+          activeBreak={activeBreak}
+          activeElapsed={elapsed}
+          tick={tick}
+        />
+
+        {/* Session history */}
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-display font-semibold">Recent Sessions</h2>
+          <Link href="/history" className="text-xs text-primary underline">View full history</Link>
+        </div>
+        <SessionHistory
+          sessions={allSessions}
+          activeSessionId={session?.id}
+          onRefresh={refresh}
+        />
+      </main>
+
+      {/* Sticky action bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-20">
+        <div className="max-w-lg mx-auto px-4 pb-6 pt-3 bg-gradient-to-t from-background via-background/95 to-transparent">
+          <div className="flex flex-col gap-2.5">
+            <BreakControls
+              status={status}
+              session={session}
+              activeBreak={activeBreak}
+              onRefresh={refresh}
+            />
+            <PunchControls
+              status={status}
+              session={session}
+              onRefresh={refresh}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
