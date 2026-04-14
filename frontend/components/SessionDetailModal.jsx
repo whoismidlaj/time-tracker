@@ -5,6 +5,7 @@ import { X, Clock, Coffee, Pencil, Calendar, ArrowRight, Trash2, Loader2 } from 
 import { Button } from "./ui/button.jsx";
 import { toast } from "../lib/use-toast.js";
 import { formatTime, formatDate, formatShortDuration, calcSessionDurationMs, calcTotalBreakMs } from "../lib/utils.js";
+import { apiClient } from "../lib/api-client.js";
 
 export function SessionDetailModal({ session, open, onOpenChange, onEdit }) {
   const [deleting, setDeleting] = useState(false);
@@ -14,7 +15,7 @@ export function SessionDetailModal({ session, open, onOpenChange, onEdit }) {
     if (!confirm("Are you sure you want to delete this session?")) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/session/${session.id}`, { method: "DELETE" });
+      const res = await apiClient(`/session/${session.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete");
       toast({ title: "Deleted", description: "Session has been removed", variant: "success" });
       onOpenChange(false);

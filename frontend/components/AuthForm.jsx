@@ -4,6 +4,7 @@ import { Button } from './ui/button.jsx';
 import { toast } from '../lib/use-toast.js';
 import { useAuth } from '../lib/auth-context.jsx';
 import { Loader2, Mail, Lock, Chrome, ArrowRight, KeyRound, Eye, EyeOff } from 'lucide-react';
+import { apiClient } from '../lib/api-client.js';
 
 export function AuthForm({ onAuthenticated }) {
   const { login } = useAuth();
@@ -29,9 +30,8 @@ export function AuthForm({ onAuthenticated }) {
     setLoading(true);
     try {
       if (mode === 'register') {
-        const res = await fetch('/api/auth/register', { 
+        const res = await apiClient('/auth/register', { 
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password }),
         });
         if (!res.ok) {
@@ -61,9 +61,8 @@ export function AuthForm({ onAuthenticated }) {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch('/api/auth/reset', {
+      const res = await apiClient('/auth/reset', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'request', email }),
       });
       const data = await res.json();

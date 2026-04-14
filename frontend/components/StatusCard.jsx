@@ -4,6 +4,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { formatDuration, formatShortDuration, formatTime, formatTimeString, calcTotalBreakMs, calcSessionDurationMs, parseLocalToUTC, calcExitTime } from "../lib/utils.js";
 import { getTimezone, getOfficeStartTime, getOfficeEndTime, getBreakHours } from "../lib/config.js";
 import { MessageSquare, Save, Loader2, Pencil, Check, X, LogOut, Clock as ClockIcon } from "lucide-react";
+import { apiClient } from "../lib/api-client.js";
 
 export function StatusCard({ status, session, activeBreak, breaks = [], elapsed, onRefresh }) {
   const [notes, setNotes] = useState(session?.notes || "");
@@ -41,9 +42,8 @@ export function StatusCard({ status, session, activeBreak, breaks = [], elapsed,
     if (!session || notes === (session.notes || "")) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/session/${session.id}`, {
+      const res = await apiClient(`/session/${session.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notes }),
       });
       if (!res.ok) throw new Error("Failed to save notes");
@@ -63,9 +63,8 @@ export function StatusCard({ status, session, activeBreak, breaks = [], elapsed,
       const dateStr = new Date(session.punch_in_time).toLocaleDateString('en-CA', { timeZone: tz });
       const newUTC = parseLocalToUTC(dateStr, tempStartTime, tz);
       
-      const res = await fetch(`/api/session/${session.id}`, {
+      const res = await apiClient(`/session/${session.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ punch_in_time: newUTC }),
       });
       if (!res.ok) throw new Error("Failed to update start time");

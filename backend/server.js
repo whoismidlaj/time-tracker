@@ -13,7 +13,8 @@ import {
   getTodaySessions, getRecentSessions,
   toggleLeave, updateUserSettings, getUserSettings,
   getAppSettings, updateAppSetting, getUsersMetrics,
-  updateUser, createSupportTicket
+  updateUser, createSupportTicket,
+  getSessionsByDateRange, getLeavesByDateRange
 } from './db/queries.js';
 import { getUserStatus, updateUserLastActive } from './lib/api-utils.js';
 import syncEvents from './lib/sync-events.js';
@@ -206,15 +207,26 @@ app.patch('/api/break/:id', authenticate, async (req, res) => {
 });
 
 app.get('/api/history', authenticate, async (req, res) => {
-  const { type, limit, date } = req.query;
+  const { type, limit, date, month, year } = req.query;
   try {
     let sessions = [];
-    if (type === 'today') {
+    let leaves = [];
+
+    if (month && year) {
+      // Monthly history logic
+      const mon = parseInt(month);
+      const yr = parseInt(year);
+      const startDate = new Date(yr, mon - 1, 1).toISOString();
+      const endDate = new Date(yr, mon, 0, 23, 59, 59, 999).toISOString();
+      
+      sessions = await getSessionsByDateRange(req.user.id, startDate, endDate);
+      leaves = await getLeavesByDateRange(req.user.id, startDate, endDate);
+    } else if (type === 'today') {
       sessions = await getTodaySessions(req.user.id, date);
     } else {
       sessions = await getRecentSessions(req.user.id, Number(limit) || 30);
     }
-    res.json({ sessions });
+    res.json({ sessions, leaves });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -6,6 +6,7 @@ import { MonthlyHeatmap } from "../../components/MonthlyHeatmap.jsx";
 import { MonthlyReportCard } from "../../components/MonthlyReportCard.jsx";
 import { DayDetailsModal } from "../../components/DayDetailsModal.jsx";
 import { startOfMonth, subMonths, addMonths, format, isSameMonth, isSameDay } from "date-fns";
+import { apiClient } from "../../lib/api-client.js";
 
 export default function ReportsPage() {
   const [sessions, setSessions] = useState([]);
@@ -23,7 +24,7 @@ export default function ReportsPage() {
     try {
       const month = date.getMonth() + 1;
       const year = date.getFullYear();
-      const res = await fetch(`/api/history?month=${month}&year=${year}`);
+      const res = await apiClient(`/history?month=${month}&year=${year}`);
       if (!res.ok) throw new Error('Could not load history');
       const data = await res.json();
       setSessions(data.sessions || []);

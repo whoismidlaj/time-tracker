@@ -3,6 +3,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Lock, Loader2, ShieldCheck, Eye, EyeOff, ArrowRight, CheckCircle2 } from "lucide-react";
 import { toast } from "../../../lib/use-toast.js";
+import { apiClient } from "../../../lib/api-client.js";
 import { Button } from "../../../components/ui/button.jsx";
 
 function ResetForm() {
@@ -36,10 +37,9 @@ function ResetForm() {
 
     setLoading(true);
     try {
-      const res = await fetch('/api/auth/reset-password', {
+      const res = await apiClient('/auth/reset-password', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, password })
+        body: JSON.stringify({ token, password }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Reset failed");

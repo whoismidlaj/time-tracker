@@ -6,6 +6,7 @@ import { Button } from "./ui/button.jsx";
 import { toast } from "../lib/use-toast.js";
 import { parseLocalToUTC, formatTimeString } from "../lib/utils.js";
 import { getTimezone } from "../lib/config.js";
+import { apiClient } from "../lib/api-client.js";
 
 export function EditSessionModal({ session: initialSession, open, onOpenChange, onRefresh }) {
   const [punchIn, setPunchIn] = useState("");
@@ -118,7 +119,7 @@ export function EditSessionModal({ session: initialSession, open, onOpenChange, 
         };
       });
 
-      const url = isEdit ? `/api/session/${initialSession.id}` : "/api/session";
+      const url = isEdit ? `/session/${initialSession.id}` : "/session";
       const method = isEdit ? "PATCH" : "POST";
       const body = {
         punch_in_time: startUTC,
@@ -131,9 +132,8 @@ export function EditSessionModal({ session: initialSession, open, onOpenChange, 
         body.action = "manual_entry";
       }
 
-      const res = await fetch(url, {
+      const res = await apiClient(url, {
         method,
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
 
@@ -156,7 +156,7 @@ export function EditSessionModal({ session: initialSession, open, onOpenChange, 
     if (!confirm("Are you sure you want to delete this session?")) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/session/${initialSession.id}`, { method: "DELETE" });
+      const res = await apiClient(`/session/${initialSession.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete");
       toast({ title: "Deleted", description: "Session has been removed" });
       if (onRefresh) onRefresh();
