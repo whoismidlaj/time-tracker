@@ -10,6 +10,7 @@ const HOLIDAY_COLOR = 'bg-sky-100 dark:bg-sky-900/30 border border-sky-200 dark:
 // Specific Leave Colors
 const SICK_LEAVE_COLOR = 'bg-rose-500 hover:bg-rose-600 shadow-[0_0_8px_rgba(244,63,94,0.3)] text-rose-50 font-bold border border-rose-400/50';
 const CASUAL_LEAVE_COLOR = 'bg-sky-500 hover:bg-sky-600 shadow-[0_0_8px_rgba(14,165,233,0.3)] text-sky-50 font-bold border border-sky-400/50';
+const WFH_LEAVE_COLOR = 'bg-teal-500 hover:bg-teal-600 shadow-[0_0_8px_rgba(20,184,166,0.3)] text-teal-50 font-bold border border-teal-400/50';
 const OTHER_LEAVE_COLOR = 'bg-violet-500 hover:bg-violet-600 shadow-[0_0_8px_rgba(139,92,246,0.3)] text-violet-50 font-bold border border-violet-400/50';
 
 const EMPTY_COLOR = 'bg-muted/10 hover:bg-muted/20 text-muted-foreground/30';
