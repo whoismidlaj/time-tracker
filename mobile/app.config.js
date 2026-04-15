@@ -25,7 +25,7 @@ export default {
       favicon: "./assets/favicon.png"
     },
     extra: {
-      apiUrl: IS_PROD ? "https://timetracker.onlyfrens.fun/api" : "http://192.168.1.43:5000/api"
+      apiUrl: IS_PROD ? "https://timetrack.onlyfrens.fun/api" : "http://192.168.1.43:5000/api"
     },
     plugins: [
       "expo-router",
