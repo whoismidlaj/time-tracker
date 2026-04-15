@@ -1,5 +1,6 @@
 "use client";
 import { useState } from 'react';
+import { useGoogleLogin } from '@react-oauth/google';
 import { Button } from './ui/button.jsx';
 import { toast } from '../lib/use-toast.js';
 import { useAuth } from '../lib/auth-context.jsx';
@@ -53,9 +54,65 @@ export function AuthForm({ onAuthenticated }) {
     }
   }
 
-  async function handleGoogleLogin() {
-    toast({ title: 'Not Implemented', description: 'Google login is being refactored.', variant: 'warning' });
-  }
+  const handleGoogleLogin = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      setLoading(true);
+      try {
+        // Since we are using Implicit Flow (or Code Flow? useGoogleLogin by default gives access_token 
+        // but we need idToken or we can change to Code Flow to get id_token on backend)
+        // Wait, @react-oauth/google useGoogleLogin usually gives access_token. 
+        // For idToken, we might need the built-in "GoogleLogin" component or 
+        // use the 'useGoogleLogin' with flow: 'auth-code'.
+        // Let's use the simplest: The built-in GoogleLogin component usually provides the credential (JWT).
+        // But the user likes the custom button style. 
+        // I will use useGoogleLogin and fetch the profile/id from Google OR 
+        // I'll stick to 'useGoogleLogin' and handle the response.
+        
+        // Actually, let's use the credential response from the built-in component 
+        // but hidden, and trigger it? No, let's just use useGoogleLogin.
+        
+        // REVISION: The backend expects 'idToken'. 
+        // @react-oauth/google's GoogleLogin component (the one with the branded button) 
+        // gives the 'credential' which is the idToken.
+        
+        toast({ title: 'Signing in...', description: 'Verifying with Google' });
+        
+        // If we want a custom button, we can use the 'useGoogleLogin' which returns an access_token.
+        // We can then exchange it or fetch user info.
+        // OR we can change the backend to accept access_token and fetch from google.
+        
+        // Easiest for custom button:
+        const userInfo = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+        }).then(res => res.json());
+
+        // Now send to backend (I'll add a 'type' or just adapt the backend)
+        // Actually, let's update the backend to support either idToken OR accessToken.
+        
+        const res = await apiClient('/auth/google', {
+          method: 'POST',
+          body: JSON.stringify({ 
+            accessToken: tokenResponse.access_token,
+            email: userInfo.email,
+            name: userInfo.name,
+            picture: userInfo.picture
+          }),
+        });
+
+        if (!res.ok) throw new Error('Google sign-in failed on server');
+        
+        toast({ title: 'Success', description: 'Logged in with Google', variant: 'success' });
+        if (onAuthenticated) onAuthenticated();
+      } catch (err) {
+        toast({ title: 'Google Error', description: err.message, variant: 'destructive' });
+      } finally {
+        setLoading(false);
+      }
+    },
+    onError: () => {
+      toast({ title: 'Google Login Failed', variant: 'destructive' });
+    }
+  });
 
   async function handleResetRequest(e) {
     e.preventDefault();

@@ -23,8 +23,7 @@ export default function ManualEntryScreen() {
       const fullIn = `${today}T${punchIn}:00`;
       const fullOut = `${today}T${punchOut}:00`;
 
-      await api.post('/session', {
-        action: 'manual_entry',
+      await api.post('/session/manual', {
         punch_in_time: fullIn,
         punch_out_time: fullOut,
         notes

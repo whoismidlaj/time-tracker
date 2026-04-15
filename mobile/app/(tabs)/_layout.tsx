@@ -2,9 +2,12 @@ import React from 'react';
 import { Tabs } from 'expo-router';
 import { Clock, History, User } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Platform } from 'react-native';
 
 export default function TabsLayout() {
   const { colors, theme } = useTheme();
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs screenOptions={{
@@ -14,9 +17,9 @@ export default function TabsLayout() {
         backgroundColor: colors.background,
         borderTopWidth: 1,
         borderTopColor: colors.border,
-        height: 64,
-        paddingBottom: 10,
-        paddingTop: 8,
+        height: Platform.OS === 'ios' ? 88 : 64 + insets.bottom,
+        paddingBottom: insets.bottom > 0 ? insets.bottom : 10,
+        paddingTop: 12,
         elevation: 0,
         shadowOpacity: 0,
       },

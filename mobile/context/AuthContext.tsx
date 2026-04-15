@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import * as SecureStore from 'expo-secure-store';
 import { AppState, AppStateStatus } from 'react-native';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
-import EventSource from 'react-native-sse';
+import { io, Socket } from 'socket.io-client';
 import SyncManager, { LocalStatus } from '../lib/SyncManager';
 import api, { setAuthErrorCallback, API_URL } from '../lib/api';
 
@@ -146,60 +146,63 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return unsubscribe;
   }, [refreshStatus]);
 
-  // Real-time Push Synchronization (SSE)
+  // Real-time Push Synchronization (WebSockets)
   useEffect(() => {
     if (!isAuth) return;
 
-    let eventSource: EventSource | null = null;
+    let socket: Socket | null = null;
 
-    const setupSSE = async () => {
+    const setupWebSockets = async () => {
       const token = await SecureStore.getItemAsync('userToken');
       if (!token) return;
 
-      eventSource = new EventSource(`${API_URL}/sync/events`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      // Connect to the base server (e.g. http://192.168.10.x:5000)
+      const socketUrl = API_URL.replace('/api', '');
+      socket = io(socketUrl, {
+        auth: { token },
+        transports: ['websocket'], // Faster and more reliable on mobile
       });
 
-      eventSource.addEventListener('status-update' as any, (event: any) => {
-        if (!event.data) return;
-        try {
-          const data = JSON.parse(event.data);
-          setStatus(data.status || 'off');
-          setSession(data.session || null);
-          setActiveBreak(data.activeBreak || null);
-          setBreaks(data.breaks || []);
-          if (data.server_time) {
-            setServerOffset(Date.now() - new Date(data.server_time).getTime());
-          }
-          
-          SyncManager.saveLocalStatus({
-            status: data.status,
-            session: data.session,
-            activeBreak: data.activeBreak,
-            breaks: data.breaks || [],
-            lastUpdated: Date.now()
-          });
-        } catch (err) {
-          console.warn('SSE Parse Error:', err);
+      socket.on('connect', () => {
+        console.log('Connected to WebSocket server');
+      });
+
+      socket.on('status-update', async (data) => {
+        if (!data) return;
+        
+        // --- Backend Authority: Reconcile pending queue with fresh backend state ---
+        await SyncManager.reconcileQueue(data.status);
+
+        setStatus(data.status || 'off');
+        setSession(data.session || null);
+        setActiveBreak(data.activeBreak || null);
+        setBreaks(data.breaks || []);
+        if (data.server_time) {
+          setServerOffset(Date.now() - new Date(data.server_time).getTime());
         }
+        
+        SyncManager.saveLocalStatus({
+          status: data.status,
+          session: data.session,
+          activeBreak: data.activeBreak,
+          breaks: data.breaks || [],
+          lastUpdated: Date.now()
+        });
       });
 
-      eventSource.addEventListener('settings-update' as any, (event: any) => {
+      socket.on('settings-update', () => {
         refreshSettings();
       });
 
-      eventSource.addEventListener('error', (event: any) => {
-        console.warn('SSE Connection error, reconnecting...');
-        // EventSource automatically handles reconnection for standard errors
+      socket.on('connect_error', (err) => {
+        console.warn('WebSocket Connection error:', err.message);
       });
     };
 
-    setupSSE();
+    setupWebSockets();
 
     return () => {
-      if (eventSource) eventSource.close();
+      if (socket) socket.disconnect();
     };
   }, [isAuth, refreshSettings]);
 
@@ -252,8 +255,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const performAction = async (action: any) => {
     // Add to sync queue for offline processing
     await SyncManager.addAction(action);
-    // Trigger sync immediately to try it
-    SyncManager.sync();
+    // Note: addAction already triggers SyncManager.sync()
   };
 
   const updateState = (data: any) => {

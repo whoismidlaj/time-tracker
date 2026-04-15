@@ -2,9 +2,12 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import express from 'express';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import jwt from 'jsonwebtoken';
+import { OAuth2Client } from 'google-auth-library';
 import { EventEmitter } from 'events';
 import { 
   verifyUser, getUserById, 
@@ -14,29 +17,79 @@ import {
   toggleLeave, updateUserSettings, getUserSettings,
   getAppSettings, updateAppSetting, getUsersMetrics,
   updateUser, createSupportTicket,
-  getSessionsByDateRange, getLeavesByDateRange
+  getSessionsByDateRange, getLeavesByDateRange,
+  createOAuthUser
 } from './db/queries.js';
 import { getUserStatus, updateUserLastActive } from './lib/api-utils.js';
 import syncEvents from './lib/sync-events.js';
 
 const app = express();
+const server = createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: '*', // Allow all for mobile compatibility during dev
+    credentials: true,
+  }
+});
+
+syncEvents.setIO(io);
+
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || 'your-secret-key';
 const FRONTEND_URL = process.env.NEXT_PUBLIC_FRONTEND_URL || 'http://localhost:3000';
 
-// Real-time events hub
-const syncEmitter = new EventEmitter();
-
 app.use(cors({
-  origin: FRONTEND_URL,
+  origin: true, // Allow all origins for mobile dev
   credentials: true,
 }));
 app.use(express.json());
 app.use(cookieParser());
 
+// --- WebSocket Handling ---
+io.use(async (socket, next) => {
+  let token = socket.handshake.auth.token || socket.handshake.headers['authorization']?.split(' ')[1];
+  
+  if (!token && socket.handshake.headers.cookie) {
+    const cookies = socket.handshake.headers.cookie.split(';').reduce((acc, cookie) => {
+      const [name, ...rest] = cookie.split('=');
+      acc[name.trim()] = decodeURIComponent(rest.join('='));
+      return acc;
+    }, {});
+    token = cookies['auth_token'];
+  }
+
+  if (!token) return next(new Error('Authentication error'));
+  
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    socket.userId = decoded.id;
+    next();
+  } catch (err) {
+    next(new Error('Authentication error'));
+  }
+});
+
+io.on('connection', (socket) => {
+  socket.join(`user:${socket.userId}`);
+  // Force a room-based status update on initial connection to ensure sync
+  getUserStatus(socket.userId).then(statusData => {
+    socket.emit('status-update', statusData);
+  }).catch(() => {});
+
+  socket.on('disconnect', () => {
+    // Cleanup handled by socket.io
+  });
+});
+
 // --- Auth Middleware ---
 const authenticate = async (req, res, next) => {
-  const token = req.cookies.auth_token;
+  let token = req.cookies.auth_token;
+
+  // Support Bearer token for mobile
+  if (!token && req.headers.authorization?.startsWith('Bearer ')) {
+    token = req.headers.authorization.split(' ')[1];
+  }
+
   if (!token) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -130,6 +183,103 @@ app.post('/api/mobile/login', async (req, res) => {
   }
 });
 
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+app.post('/api/auth/google', async (req, res) => {
+  const { idToken, accessToken, email, name, picture } = req.body;
+  
+  try {
+    let userData;
+
+    if (idToken) {
+      const ticket = await googleClient.verifyIdToken({
+        idToken,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      const payload = ticket.getPayload();
+      userData = {
+        email: payload.email,
+        name: payload.name,
+        picture: payload.picture
+      };
+    } else if (accessToken && email) {
+      // For web implicit flow, we trust the verified email sent with the access token 
+      // since the client already fetched it from google's userinfo endpoint.
+      userData = { email, name, picture };
+    } else {
+      return res.status(400).json({ error: 'Missing token or user data' });
+    }
+
+    const user = await createOAuthUser(userData.email, userData.name, userData.picture);
+
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.cookie('auth_token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        display_name: user.display_name,
+        role: user.role,
+        avatar_url: user.avatar_url,
+      }
+    });
+  } catch (err) {
+    console.error('Google verification error:', err);
+    res.status(401).json({ error: 'Invalid Google session' });
+  }
+});
+
+app.post('/api/mobile/auth/google', async (req, res) => {
+  const { idToken } = req.body;
+  if (!idToken) {
+    return res.status(400).json({ error: 'idToken is required' });
+  }
+
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const { email, name, picture } = payload;
+
+    const user = await createOAuthUser(email, name, picture);
+
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '365d' }
+    );
+
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        display_name: user.display_name,
+        avatar_url: user.avatar_url,
+      },
+      token
+    });
+  } catch (err) {
+    console.error('Google verification error:', err);
+    res.status(401).json({ error: 'Invalid Google token' });
+  }
+});
+
 app.post('/api/auth/logout', (req, res) => {
   res.clearCookie('auth_token');
   res.json({ success: true });
@@ -161,9 +311,23 @@ app.get('/api/status', authenticate, async (req, res) => {
 app.post('/api/session', authenticate, async (req, res) => {
   const { notes, timestamp } = req.body;
   try {
-    const session = await punchIn(req.user.id, notes, timestamp);
+    await punchIn(req.user.id, notes, timestamp);
     const statusData = await getUserStatus(req.user.id);
     syncEvents.broadcastStatus(req.user.id, statusData);
+    res.json(statusData);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/session/manual', authenticate, async (req, res) => {
+  const { punch_in_time, punch_out_time, notes } = req.body;
+  try {
+    const session = await createManualSession(req.user.id, { 
+      punch_in_time, 
+      punch_out_time, 
+      notes 
+    });
     res.json(session);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -173,10 +337,10 @@ app.post('/api/session', authenticate, async (req, res) => {
 app.patch('/api/session/:id', authenticate, async (req, res) => {
   const { timestamp } = req.body;
   try {
-    const session = await punchOut(Number(req.params.id), req.user.id, timestamp);
+    await punchOut(Number(req.params.id), req.user.id, timestamp);
     const statusData = await getUserStatus(req.user.id);
     syncEvents.broadcastStatus(req.user.id, statusData);
-    res.json(session);
+    res.json(statusData);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -185,10 +349,10 @@ app.patch('/api/session/:id', authenticate, async (req, res) => {
 app.post('/api/break', authenticate, async (req, res) => {
   const { sessionId, timestamp } = req.body;
   try {
-    const brk = await startBreak(Number(sessionId), req.user.id, timestamp);
+    await startBreak(Number(sessionId), req.user.id, timestamp);
     const statusData = await getUserStatus(req.user.id);
     syncEvents.broadcastStatus(req.user.id, statusData);
-    res.json(brk);
+    res.json(statusData);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -197,10 +361,10 @@ app.post('/api/break', authenticate, async (req, res) => {
 app.patch('/api/break/:id', authenticate, async (req, res) => {
   const { timestamp } = req.body;
   try {
-    const brk = await endBreak(Number(req.params.id), req.user.id, timestamp);
+    await endBreak(Number(req.params.id), req.user.id, timestamp);
     const statusData = await getUserStatus(req.user.id);
     syncEvents.broadcastStatus(req.user.id, statusData);
-    res.json(brk);
+    res.json(statusData);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -326,35 +490,8 @@ app.get('/api/admin/users', authenticate, adminOnly, async (req, res) => {
   }
 });
 
-app.get('/api/sync/events', authenticate, (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
+// SSE route removed in favor of WebSockets
 
-  const userId = req.user.id;
-  const onStatusUpdate = (data) => {
-    res.write(`event: status-update\ndata: ${JSON.stringify(data)}\n\n`);
-  };
-
-  const onSettingsUpdate = (data) => {
-    res.write(`event: settings-update\ndata: ${JSON.stringify(data)}\n\n`);
-  };
-
-  syncEvents.on(`status-update:${userId}`, onStatusUpdate);
-  syncEvents.on(`settings-update:${userId}`, onSettingsUpdate);
-
-  // Heartbeat
-  const heartbeat = setInterval(() => {
-    res.write(': heartbeat\n\n');
-  }, 30000);
-
-  req.on('close', () => {
-    clearInterval(heartbeat);
-    syncEvents.off(`status-update:${userId}`, onStatusUpdate);
-    syncEvents.off(`settings-update:${userId}`, onSettingsUpdate);
-  });
-});
-
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Backend API running at http://localhost:${PORT}`);
 });

@@ -181,7 +181,8 @@ export async function getActiveBreak(sessionId) {
 
 export async function punchIn(userId, notes = null, timestamp = null) {
   if (!userId) throw new Error('Not authenticated');
-  if (await getActiveSession(userId)) throw new Error('Already punched in');
+  const activeSession = await getActiveSession(userId);
+  if (activeSession) return activeSession;
 
   const now = timestamp || new Date().toISOString();
   await ensureNoOverlap(userId, now, null);
@@ -304,7 +305,7 @@ export async function punchOut(sessionId, userId, timestamp = null) {
   if (!userId) throw new Error('Not authenticated');
   const session = await getSessionById(sessionId);
   if (!session || session.user_id !== userId) throw new Error('Session not found');
-  if (session.punch_out_time) throw new Error('Already punched out');
+  if (session.punch_out_time) return session;
 
   const db = await getDb();
   const now = timestamp || new Date().toISOString();
@@ -321,7 +322,8 @@ export async function startBreak(sessionId, userId, timestamp = null) {
   const session = await getSessionById(sessionId);
   if (!session || session.user_id !== userId) throw new Error('Session not found');
   if (session.punch_out_time) throw new Error('Session already ended');
-  if (await getActiveBreak(sessionId)) throw new Error('Break already in progress');
+  const activeBreak = await getActiveBreak(sessionId);
+  if (activeBreak) return activeBreak;
 
   const db = await getDb();
   const now = timestamp || new Date().toISOString();
@@ -341,7 +343,7 @@ export async function endBreak(breakId, userId, timestamp = null) {
   if (!brk) throw new Error('Break not found');
   const session = await getSessionById(brk.session_id);
   if (!session || session.user_id !== userId) throw new Error('Break not found');
-  if (brk.break_end) throw new Error('Break already ended');
+  if (brk.break_end) return brk;
 
   const now = timestamp || new Date().toISOString();
   await db.query('UPDATE breaks SET break_end = $1 WHERE id = $2', [now, breakId]);

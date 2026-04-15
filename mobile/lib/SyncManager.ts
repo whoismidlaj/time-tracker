@@ -96,6 +96,34 @@ class SyncManager {
     this.sync();
   }
 
+  async reconcileQueue(serverStatus: 'working' | 'break' | 'off') {
+    let queue = await this.getQueue();
+    const originalLength = queue.length;
+    
+    if (serverStatus === 'off') {
+      // Remove any pending punch_out, start_break, or end_break if server says session is already over
+      queue = queue.filter(a => {
+        // punch_out is PATCH /session/:id
+        if (a.endpoint.includes('/session/') && a.method === 'PATCH') return false;
+        // break actions are /break or /break/:id
+        if (a.endpoint.includes('/break')) return false;
+        return true;
+      });
+    } else if (serverStatus === 'working') {
+      // Remove any pending punch_in if server says we are already working
+      queue = queue.filter(a => {
+        // punch_in is POST /session
+        if (a.endpoint === '/session' && a.method === 'POST') return false;
+        return true;
+      });
+    }
+    
+    if (queue.length !== originalLength) {
+      console.log(`[SyncManager] Reconciled queue: removed ${originalLength - queue.length} stale actions based on backend state.`);
+      await this.saveQueue(queue);
+    }
+  }
+
   async sync() {
     if (this.isSyncing) return;
     
@@ -111,6 +139,15 @@ class SyncManager {
         const action = queue[0];
         try {
           const method = action.method.toLowerCase() as 'post' | 'patch' | 'delete';
+          let endpoint = action.endpoint;
+
+          // --- URL ID Resolution ---
+          // Replace any temporary IDs in the URL with real IDs from previous actions
+          for (const [tmpId, realId] of Object.entries(idMap)) {
+            if (endpoint.includes(tmpId)) {
+              endpoint = endpoint.replace(tmpId, realId);
+            }
+          }
           
           // --- ID Resolution ---
           let isOrphan = false;
@@ -136,7 +173,7 @@ class SyncManager {
             continue;
           }
           
-          const res = await api[method](action.endpoint, action.payload);
+          const res = await api[method](endpoint, action.payload);
           
           // Store actual IDs for subsequent actions in the queue
           if (action.payload?.offlineSessionId && res.data?.session?.id) {

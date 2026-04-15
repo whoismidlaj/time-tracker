@@ -16,6 +16,7 @@ import { Clock } from "lucide-react";
 import { useAuth } from "../lib/auth-context.jsx";
 import { apiClient } from "../lib/api-client.js";
 import { useRouter } from "next/navigation";
+import { io } from "socket.io-client";
 
 export default function HomePage() {
   const { user, loading, refresh: authRefresh } = useAuth();
@@ -96,21 +97,26 @@ export default function HomePage() {
     refresh();
   }, [user, refresh, router]);
 
-  // Real-time Sync (SSE) - Sync with other devices instantly
+  // Real-time Sync (WebSockets) - Sync with other devices instantly
   useEffect(() => {
     if (!user) return;
     
+    // Convert /api URL to socket base URL
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-    const eventSource = new EventSource(`${API_URL}/sync/events`, { withCredentials: true });
+    const socketUrl = API_URL.replace('/api', '');
 
-    eventSource.onmessage = (event) => {
-      // Handle heartbeats (empty data)
-      if (!event.data) return;
-    };
+    const socket = io(socketUrl, {
+      withCredentials: true,
+      transports: ['websocket'],
+    });
 
-    eventSource.addEventListener('status-update', (event) => {
+    socket.on('connect', () => {
+      console.log('Connected to WebSocket server');
+    });
+
+    socket.on('status-update', (data) => {
+      if (!data) return;
       try {
-        const data = JSON.parse(event.data);
         setStatus(data.status || 'off');
         setSession(data.session || null);
         setActiveBreak(data.activeBreak || null);
@@ -121,21 +127,20 @@ export default function HomePage() {
         // Also refresh history to update the "Recent Sessions" list
         fetchHistory();
       } catch (err) {
-        console.error('SSE status-update parse error:', err);
+        console.error('Socket status-update error:', err);
       }
     });
 
-    eventSource.addEventListener('settings-update', () => {
+    socket.on('settings-update', () => {
       // Just trigger a full refresh if settings change
       refresh();
     });
 
-    eventSource.onerror = (err) => {
-      console.error('SSE Error, reconnecting...', err);
-      eventSource.close();
-    };
+    socket.on('connect_error', (err) => {
+      console.warn('Socket Connection error:', err.message);
+    });
 
-    return () => eventSource.close();
+    return () => socket.disconnect();
   }, [user, refresh, fetchHistory]);
 
   // Live timer

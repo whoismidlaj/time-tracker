@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, RefreshControl, ActivityIndicator, TouchableOpacity, ScrollView } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Calendar as CalendarIcon, Clock, ChevronRight, ChevronLeft } from 'lucide-react-native';
 import { Stack } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
@@ -100,16 +99,7 @@ export default function HistoryScreen() {
   }, [sessions]);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <Stack.Screen 
-        options={{
-          headerShown: true,
-          headerStyle: { backgroundColor: colors.background },
-          headerTitleStyle: { color: colors.foreground, fontWeight: '800' },
-          headerTitle: 'Analytics & Logs',
-          headerShadowVisible: false,
-        }} 
-      />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       
       <ScrollView 
         contentContainerStyle={styles.scrollContent}
@@ -229,7 +219,7 @@ export default function HistoryScreen() {
         leave={selectedLeave}
         onRefresh={() => fetchHistory(selectedMonth)}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 

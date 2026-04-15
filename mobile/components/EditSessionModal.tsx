@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { X, Clock, Coffee, Save, Trash2, Calendar, Plus } from 'lucide-react-native';
 import { useTheme } from '../context/ThemeContext';
 import api from '../lib/api';
 import { 
   formatInputDateTime, 
-  parseLocalToUTC 
+  parseLocalToUTC,
+  formatTime
 } from '../lib/utils';
 
 interface EditSessionModalProps {
@@ -26,6 +28,9 @@ export default function EditSessionModal({ session, visible, onClose, onRefresh 
   const [breaks, setBreaks] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  
+  // Picker States
+  const [activePicker, setActivePicker] = useState<{ type: 'in' | 'out' | 'breakIn' | 'breakOut' | 'dateIn' | 'dateOut', index?: number } | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -34,14 +39,19 @@ export default function EditSessionModal({ session, visible, onClose, onRefresh 
         setPunchInDate(inVals.date);
         setPunchInTime(inVals.time);
         
-        const outVals = formatInputDateTime(session.punch_out_time);
-        setPunchOutDate(outVals.date);
-        setPunchOutTime(outVals.time);
+        if (session.punch_out_time) {
+          const outVals = formatInputDateTime(session.punch_out_time);
+          setPunchOutDate(outVals.date);
+          setPunchOutTime(outVals.time);
+        } else {
+          setPunchOutDate('');
+          setPunchOutTime('');
+        }
         
         setNotes(session.notes || '');
         setBreaks((session.breaks || []).map((b: any) => {
           const bIn = formatInputDateTime(b.break_start);
-          const bOut = formatInputDateTime(b.break_end);
+          const bOut = b.break_end ? formatInputDateTime(b.break_end) : { time: '' };
           return {
             ...b,
             start_time: bIn.time,
@@ -49,7 +59,6 @@ export default function EditSessionModal({ session, visible, onClose, onRefresh 
           };
         }));
       } else {
-        // Manual entry (New session)
         const now = formatInputDateTime(new Date().toISOString());
         setPunchInDate(now.date);
         setPunchInTime(now.time);
@@ -60,6 +69,49 @@ export default function EditSessionModal({ session, visible, onClose, onRefresh 
       }
     }
   }, [visible, session]);
+
+  const onPickerChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') setActivePicker(null);
+    if (!selectedDate) return;
+
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    
+    if (activePicker?.type === 'dateIn' || activePicker?.type === 'dateOut') {
+      const dateStr = `${selectedDate.getFullYear()}-${pad(selectedDate.getMonth() + 1)}-${pad(selectedDate.getDate())}`;
+      if (activePicker.type === 'dateIn') setPunchInDate(dateStr);
+      else setPunchOutDate(dateStr);
+    } else {
+      const timeStr = `${pad(selectedDate.getHours())}:${pad(selectedDate.getMinutes())}`;
+      if (activePicker?.type === 'in') setPunchInTime(timeStr);
+      else if (activePicker?.type === 'out') setPunchOutTime(timeStr);
+      else if (activePicker?.type === 'breakIn' && activePicker.index !== undefined) {
+        const newBreaks = [...breaks];
+        newBreaks[activePicker.index].start_time = timeStr;
+        setBreaks(newBreaks);
+      } else if (activePicker?.type === 'breakOut' && activePicker.index !== undefined) {
+        const newBreaks = [...breaks];
+        newBreaks[activePicker.index].end_time = timeStr;
+        setBreaks(newBreaks);
+      }
+    }
+  };
+
+  const getPickerDate = (dateStr: string, timeStr: string) => {
+    const [y, M, d] = (dateStr || '2024-01-01').split('-').map(Number);
+    const [h, m] = (timeStr || '00:00').split(':').map(Number);
+    const date = new Date();
+    date.setFullYear(y, M - 1, d);
+    date.setHours(h, m, 0, 0);
+    return date;
+  };
+
+  const displayTime = (timeStr: string) => {
+    if (!timeStr) return 'Not set';
+    const [h, m] = timeStr.split(':').map(Number);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const displayH = h % 12 || 12;
+    return `${displayH}:${m.toString().padStart(2, '0')} ${ampm}`;
+  };
 
   const handleSave = async () => {
     setLoading(true);
@@ -153,20 +205,19 @@ export default function EditSessionModal({ session, visible, onClose, onRefresh 
                   <Text style={[styles.label, { color: colors.mutedForeground }]}>PUNCH IN</Text>
                 </View>
                 <View style={styles.dateTimeRow}>
-                  <TextInput
-                    style={[styles.input, { backgroundColor: colors.muted, color: colors.foreground, flex: 2 }]}
-                    value={punchInDate}
-                    onChangeText={setPunchInDate}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={colors.mutedForeground + '60'}
-                  />
-                  <TextInput
-                    style={[styles.input, { backgroundColor: colors.muted, color: colors.foreground, flex: 1, textAlign: 'center' }]}
-                    value={punchInTime}
-                    onChangeText={setPunchInTime}
-                    placeholder="HH:MM"
-                    placeholderTextColor={colors.mutedForeground + '60'}
-                  />
+                  <TouchableOpacity 
+                    onPress={() => setActivePicker({ type: 'dateIn' })}
+                    style={[styles.pickerTrigger, { backgroundColor: colors.muted, flex: 1.5 }]}
+                  >
+                    <Calendar size={14} color={colors.primary} />
+                    <Text style={[styles.pickerText, { color: colors.foreground }]}>{punchInDate || 'Date'}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    onPress={() => setActivePicker({ type: 'in' })}
+                    style={[styles.pickerTrigger, { backgroundColor: colors.muted, flex: 1 }]}
+                  >
+                    <Text style={[styles.pickerText, { color: colors.foreground }]}>{displayTime(punchInTime)}</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
 
@@ -177,20 +228,19 @@ export default function EditSessionModal({ session, visible, onClose, onRefresh 
                   <Text style={[styles.label, { color: colors.mutedForeground }]}>PUNCH OUT</Text>
                 </View>
                 <View style={styles.dateTimeRow}>
-                  <TextInput
-                    style={[styles.input, { backgroundColor: colors.muted, color: colors.foreground, flex: 2 }]}
-                    value={punchOutDate}
-                    onChangeText={setPunchOutDate}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={colors.mutedForeground + '60'}
-                  />
-                  <TextInput
-                    style={[styles.input, { backgroundColor: colors.muted, color: colors.foreground, flex: 1, textAlign: 'center' }]}
-                    value={punchOutTime}
-                    onChangeText={setPunchOutTime}
-                    placeholder="HH:MM"
-                    placeholderTextColor={colors.mutedForeground + '60'}
-                  />
+                  <TouchableOpacity 
+                    onPress={() => setActivePicker({ type: 'dateOut' })}
+                    style={[styles.pickerTrigger, { backgroundColor: colors.muted, flex: 1.5 }]}
+                  >
+                    <Calendar size={14} color={colors.destructive} />
+                    <Text style={[styles.pickerText, { color: colors.foreground }]}>{punchOutDate || 'Not set'}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    onPress={() => setActivePicker({ type: 'out' })}
+                    style={[styles.pickerTrigger, { backgroundColor: colors.muted, flex: 1 }]}
+                  >
+                    <Text style={[styles.pickerText, { color: colors.foreground }]}>{displayTime(punchOutTime)}</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
 
@@ -225,29 +275,21 @@ export default function EditSessionModal({ session, visible, onClose, onRefresh 
                     <View style={styles.breakInputs}>
                       <View style={styles.breakInputCol}>
                         <Text style={[styles.breakInputLabel, { color: colors.mutedForeground }]}>START</Text>
-                        <TextInput
-                          style={[styles.breakInput, { backgroundColor: colors.card, color: colors.foreground }]}
-                          value={brk.start_time}
-                          onChangeText={(v) => {
-                            const newBreaks = [...breaks];
-                            newBreaks[idx].start_time = v;
-                            setBreaks(newBreaks);
-                          }}
-                          placeholder="HH:MM"
-                        />
+                        <TouchableOpacity 
+                          onPress={() => setActivePicker({ type: 'breakIn', index: idx })}
+                          style={[styles.breakPicker, { backgroundColor: colors.card }]}
+                        >
+                          <Text style={[styles.breakPickerText, { color: colors.foreground }]}>{displayTime(brk.start_time)}</Text>
+                        </TouchableOpacity>
                       </View>
                       <View style={styles.breakInputCol}>
                         <Text style={[styles.breakInputLabel, { color: colors.mutedForeground }]}>END</Text>
-                        <TextInput
-                          style={[styles.breakInput, { backgroundColor: colors.card, color: colors.foreground }]}
-                          value={brk.end_time}
-                          onChangeText={(v) => {
-                            const newBreaks = [...breaks];
-                            newBreaks[idx].end_time = v;
-                            setBreaks(newBreaks);
-                          }}
-                          placeholder="HH:MM"
-                        />
+                        <TouchableOpacity 
+                          onPress={() => setActivePicker({ type: 'breakOut', index: idx })}
+                          style={[styles.breakPicker, { backgroundColor: colors.card }]}
+                        >
+                          <Text style={[styles.breakPickerText, { color: colors.foreground }]}>{displayTime(brk.end_time)}</Text>
+                        </TouchableOpacity>
                       </View>
                     </View>
                     <TouchableOpacity onPress={() => setBreaks(breaks.filter((_, i) => i !== idx))} style={styles.trashIcon}>
@@ -282,6 +324,24 @@ export default function EditSessionModal({ session, visible, onClose, onRefresh 
               </View>
             </ScrollView>
           </KeyboardAvoidingView>
+          
+          {activePicker && (
+            <DateTimePicker
+              value={(() => {
+                if (activePicker.type === 'dateIn') return getPickerDate(punchInDate, '00:00');
+                if (activePicker.type === 'dateOut') return getPickerDate(punchOutDate || punchInDate, '00:00');
+                if (activePicker.type === 'in') return getPickerDate(punchInDate, punchInTime);
+                if (activePicker.type === 'out') return getPickerDate(punchOutDate || punchInDate, punchOutTime || punchInTime);
+                if (activePicker.type === 'breakIn' && activePicker.index !== undefined) return getPickerDate(punchInDate, breaks[activePicker.index].start_time);
+                if (activePicker.type === 'breakOut' && activePicker.index !== undefined) return getPickerDate(punchInDate, breaks[activePicker.index].end_time || breaks[activePicker.index].start_time);
+                return new Date();
+              })()}
+              mode={(activePicker.type === 'dateIn' || activePicker.type === 'dateOut') ? 'date' : 'time'}
+              is24Hour={false}
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={onPickerChange}
+            />
+          )}
         </SafeAreaView>
       </View>
     </Modal>
@@ -340,13 +400,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
   },
-  input: {
+  pickerTrigger: {
     height: 52,
     borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 16,
-    fontSize: 15,
+    gap: 10,
+  },
+  pickerText: {
+    fontSize: 14,
     fontWeight: '700',
-    fontVariant: ['tabular-nums'],
+  },
+  breakPicker: {
+    height: 38,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  breakPickerText: {
+    fontSize: 11,
+    fontWeight: '800',
   },
   notesInput: {
     borderRadius: 16,
@@ -410,15 +484,6 @@ const styles = StyleSheet.create({
     fontSize: 8,
     fontWeight: '800',
     marginLeft: 2,
-  },
-  breakInput: {
-    height: 36,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    fontSize: 12,
-    fontWeight: '800',
-    textAlign: 'center',
-    fontVariant: ['tabular-nums'],
   },
   trashIcon: {
     padding: 10,

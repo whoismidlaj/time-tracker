@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, Alert, ActivityIndicator, TextInput, Platform } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, Alert, ActivityIndicator, TextInput, Platform, Modal } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { User, Shield, Bell, Moon, LogOut, ChevronRight, Clock, Globe, CalendarDays, ExternalLink, HelpCircle } from 'lucide-react-native';
 import * as SecureStore from 'expo-secure-store';
 import { useTheme } from '../../context/ThemeContext';
@@ -37,6 +37,10 @@ export default function ProfileScreen() {
   const [breakHours, setBreakHours] = useState('1');
   const [timezone, setTimezone] = useState('Asia/Kolkata');
   const [weeklyHolidays, setWeeklyHolidays] = useState<string[]>(['0', '6']);
+  
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
+  const [showTzPicker, setShowTzPicker] = useState(false);
 
   // Load settings on mount
   useEffect(() => {
@@ -69,6 +73,36 @@ export default function ProfileScreen() {
     );
   };
 
+  const onTimeChange = (event: any, selectedDate: Date | undefined, type: 'start' | 'end') => {
+    if (Platform.OS === 'android') {
+      if (type === 'start') setShowStartPicker(false);
+      else setShowEndPicker(false);
+    }
+
+    if (selectedDate) {
+      const hours = selectedDate.getHours().toString().padStart(2, '0');
+      const minutes = selectedDate.getMinutes().toString().padStart(2, '0');
+      const timeStr = `${hours}:${minutes}`;
+      if (type === 'start') setStartTime(timeStr);
+      else setEndTime(timeStr);
+    }
+  };
+
+  const getPickerDate = (timeStr: string) => {
+    const [h, m] = timeStr.split(':').map(Number);
+    const d = new Date();
+    d.setHours(h);
+    d.setMinutes(m);
+    return d;
+  };
+
+  const format12h = (timeStr: string) => {
+    const [h, m] = timeStr.split(':').map(Number);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const displayH = h % 12 || 12;
+    return `${displayH}:${m.toString().padStart(2, '0')} ${ampm}`;
+  };
+
   const saveSettings = async () => {
     setSaving(true);
     const settings = {
@@ -87,9 +121,10 @@ export default function ProfileScreen() {
         method: 'PATCH',
         payload: { settings }
       });
-      Alert.alert("Success", "Settings saved and syncing...");
+      refreshSettings(); // Sync current state
+      Alert.alert("Success", "Settings updated!");
     } catch (err) {
-      Alert.alert("Error", "Failed to save settings locally");
+      Alert.alert("Error", "Failed to save settings");
     } finally {
       setSaving(false);
     }
@@ -104,7 +139,7 @@ export default function ProfileScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Profile Header */}
         <View style={styles.header}>
@@ -122,54 +157,64 @@ export default function ProfileScreen() {
           <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>OFFICE RULES</Text>
           
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.settingItem}>
+            <View style={styles.settingItemStacked}>
               <View style={styles.settingIconText}>
                 <Clock size={20} color={colors.mutedForeground} />
                 <Text style={[styles.settingLabel, { color: colors.foreground }]}>Office Hours</Text>
               </View>
-              <View style={styles.timeInputs}>
-                <TextInput
-                  value={startTime}
-                  onChangeText={setStartTime}
-                  style={[styles.timeInput, { color: colors.primary, backgroundColor: colors.muted }]}
-                  placeholder="09:30"
-                />
-                <Text style={{ color: colors.mutedForeground }}>-</Text>
-                <TextInput
-                  value={endTime}
-                  onChangeText={setEndTime}
-                  style={[styles.timeInput, { color: colors.primary, backgroundColor: colors.muted }]}
-                  placeholder="18:30"
-                />
+              <View style={styles.timeInputsStacked}>
+                <TouchableOpacity 
+                  onPress={() => setShowStartPicker(true)}
+                  style={[styles.timeSelectorStacked, { backgroundColor: colors.muted }]}
+                >
+                  <Text style={[styles.timeLabel, { color: colors.mutedForeground }]}>START</Text>
+                  <Text style={[styles.timeSelectorText, { color: colors.primary }]}>{format12h(startTime)}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  onPress={() => setShowEndPicker(true)}
+                  style={[styles.timeSelectorStacked, { backgroundColor: colors.muted }]}
+                >
+                  <Text style={[styles.timeLabel, { color: colors.mutedForeground }]}>END</Text>
+                  <Text style={[styles.timeSelectorText, { color: colors.primary }]}>{format12h(endTime)}</Text>
+                </TouchableOpacity>
               </View>
+
+              {showStartPicker && (
+                <DateTimePicker
+                  value={getPickerDate(startTime)}
+                  mode="time"
+                  is24Hour={false}
+                  display={Platform.OS === 'ios' ? 'spinner' : 'clock'}
+                  onChange={(e, d) => onTimeChange(e, d, 'start')}
+                />
+              )}
+              {showEndPicker && (
+                <DateTimePicker
+                  value={getPickerDate(endTime)}
+                  mode="time"
+                  is24Hour={false}
+                  display={Platform.OS === 'ios' ? 'spinner' : 'clock'}
+                  onChange={(e, d) => onTimeChange(e, d, 'end')}
+                />
+              )}
             </View>
 
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-            <View style={styles.settingItem}>
+            <View style={styles.settingItemStacked}>
               <View style={styles.settingIconText}>
                 <Globe size={20} color={colors.mutedForeground} />
                 <Text style={[styles.settingLabel, { color: colors.foreground }]}>App Timezone</Text>
               </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginLeft: 10 }}>
-                <View style={styles.timezoneList}>
-                  {TIMEZONES.map(tz => (
-                    <TouchableOpacity
-                      key={tz.value}
-                      onPress={() => setTimezone(tz.value)}
-                      style={[
-                        styles.tzBadge,
-                        { backgroundColor: timezone === tz.value ? colors.primary + '20' : colors.muted },
-                        timezone === tz.value && { borderColor: colors.primary, borderWidth: 1 }
-                      ]}
-                    >
-                      <Text style={[styles.tzText, { color: timezone === tz.value ? colors.primary : colors.mutedForeground }]}>
-                        {tz.label.split(' ')[0]}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </ScrollView>
+              <TouchableOpacity 
+                onPress={() => setShowTzPicker(true)}
+                style={[styles.tzSelectorStacked, { backgroundColor: colors.muted, borderColor: colors.border }]}
+              >
+                <Text style={[styles.tzSelectorText, { color: colors.foreground }]}>
+                  {TIMEZONES.find(t => t.value === timezone)?.label || timezone}
+                </Text>
+                <ChevronRight size={18} color={colors.mutedForeground} />
+              </TouchableOpacity>
             </View>
 
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
@@ -209,7 +254,7 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>PREFERENCES</Text>
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.settingItem}>
+            <View style={styles.settingItemRow}>
               <View style={styles.settingIconText}>
                 <Moon size={20} color={colors.mutedForeground} />
                 <Text style={[styles.settingLabel, { color: colors.foreground }]}>Dark Mode</Text>
@@ -217,7 +262,7 @@ export default function ProfileScreen() {
               <Switch value={theme === 'dark'} onValueChange={toggleTheme} trackColor={{ false: '#767577', true: colors.primary }} />
             </View>
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            <TouchableOpacity style={styles.settingItem} onPress={() => Linking.openURL('https://github.com/whoismidlaj')}>
+            <TouchableOpacity style={styles.settingItemRow} onPress={() => Linking.openURL('https://github.com/whoismidlaj')}>
               <View style={styles.settingIconText}>
                 <HelpCircle size={20} color={colors.mutedForeground} />
                 <Text style={[styles.settingLabel, { color: colors.foreground }]}>Help & Guide</Text>
@@ -231,7 +276,7 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>SYNC STATUS</Text>
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <TouchableOpacity style={styles.settingItem} onPress={clearPendingSyncs}>
+            <TouchableOpacity style={styles.settingItemStacked} onPress={clearPendingSyncs}>
               <View style={styles.settingIconText}>
                 <Shield size={20} color={colors.destructive} />
                 <View>
@@ -239,7 +284,6 @@ export default function ProfileScreen() {
                   <Text style={[styles.subLabel, { color: colors.mutedForeground }]}>Use if app is stuck "Syncing"</Text>
                 </View>
               </View>
-              <ChevronRight size={20} color={colors.mutedForeground} />
             </TouchableOpacity>
           </View>
         </View>
@@ -265,7 +309,31 @@ export default function ProfileScreen() {
           <Text style={[styles.logoutText, { color: colors.destructive }]}>Sign Out</Text>
         </TouchableOpacity>
       </ScrollView>
-    </SafeAreaView>
+
+      {/* Timezone Selection Modal */}
+      <Modal visible={showTzPicker} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Select Timezone</Text>
+            {TIMEZONES.map(tz => (
+              <TouchableOpacity 
+                key={tz.value} 
+                onPress={() => { setTimezone(tz.value); setShowTzPicker(false); }}
+                style={[styles.tzOption, { borderBottomColor: colors.border }]}
+              >
+                <Text style={[styles.tzOptionText, { color: timezone === tz.value ? colors.primary : colors.foreground }]}>
+                  {tz.label}
+                </Text>
+                {timezone === tz.value && <View style={[styles.activeDot, { backgroundColor: colors.primary }]} />}
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity onPress={() => setShowTzPicker(false)} style={styles.modalCloseBtn}>
+              <Text style={[styles.modalCloseText, { color: colors.mutedForeground }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
@@ -281,16 +349,26 @@ const styles = StyleSheet.create({
   section: { marginBottom: 24 },
   sectionTitle: { fontSize: 11, fontWeight: '800', letterSpacing: 1, marginBottom: 12, marginLeft: 4 },
   card: { borderRadius: 20, borderWidth: 1, overflow: 'hidden', paddingVertical: 8 },
-  settingItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },
+  settingItemStacked: { padding: 16, gap: 14 },
+  settingItemRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },
   settingIconText: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  settingLabel: { fontSize: 15, fontWeight: '600' },
+  settingLabel: { fontSize: 16, fontWeight: '700' },
   subLabel: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
   divider: { height: 1, marginHorizontal: 16 },
-  timeInputs: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  timeInput: { width: 70, height: 36, borderRadius: 10, textAlign: 'center', fontSize: 13, fontWeight: '800' },
-  timezoneList: { flexDirection: 'row', gap: 8, paddingRight: 16 },
-  tzBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
-  tzText: { fontSize: 12, fontWeight: '700' },
+  timeInputsStacked: { flexDirection: 'row', gap: 12, width: '100%' },
+  timeSelectorStacked: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 14, gap: 2 },
+  timeLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  timeSelectorText: { fontSize: 16, fontWeight: '800' },
+  tzSelectorStacked: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderRadius: 14, borderWidth: 1 },
+  tzSelectorText: { fontSize: 14, fontWeight: '700' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 30 },
+  modalContent: { borderRadius: 24, padding: 24, gap: 4 },
+  modalTitle: { fontSize: 18, fontWeight: '800', marginBottom: 16, textAlign: 'center' },
+  tzOption: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1 },
+  tzOptionText: { fontSize: 15, fontWeight: '700' },
+  activeDot: { width: 8, height: 8, borderRadius: 4 },
+  modalCloseBtn: { marginTop: 16, padding: 12, alignItems: 'center' },
+  modalCloseText: { fontSize: 14, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 16, marginBottom: 12 },
   holidayGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, marginBottom: 16 },
   dayButton: { width: 38, height: 38, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
