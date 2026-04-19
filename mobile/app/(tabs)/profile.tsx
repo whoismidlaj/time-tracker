@@ -272,21 +272,7 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* App Info & Developer Credits */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>SYNC STATUS</Text>
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <TouchableOpacity style={styles.settingItemStacked} onPress={clearPendingSyncs}>
-              <View style={styles.settingIconText}>
-                <Shield size={20} color={colors.destructive} />
-                <View>
-                  <Text style={[styles.settingLabel, { color: colors.foreground }]}>Reset Sync Queue</Text>
-                  <Text style={[styles.subLabel, { color: colors.mutedForeground }]}>Use if app is stuck "Syncing"</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-          </View>
-        </View>
+
 
         <View style={styles.creditsSection}>
             <Text style={[styles.versionText, { color: colors.mutedForeground }]}>v1.2.0 Seamless</Text>

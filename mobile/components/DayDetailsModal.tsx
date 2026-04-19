@@ -5,6 +5,7 @@ import { format, isSameDay } from 'date-fns';
 import { useTheme } from '../context/ThemeContext';
 import { formatShortDuration, formatTime } from '../lib/utils';
 import api from '../lib/api';
+import { EditSessionModal } from './EditSessionModal';
 
 interface Props {
   visible: boolean;
@@ -19,6 +20,8 @@ export function DayDetailsModal({ visible, onClose, day, sessions, leave, onRefr
   const { colors, theme } = useTheme();
   const [loading, setLoading] = useState(false);
   const [customNotes, setCustomNotes] = useState(leave?.notes || "");
+  const [editingSession, setEditingSession] = useState<any>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const daySessions = useMemo(() => {
     if (!day) return [];
@@ -128,7 +131,15 @@ export function DayDetailsModal({ visible, onClose, day, sessions, leave, onRefr
                               {s.punch_out_time ? formatTime(s.punch_out_time) : "Live"}
                             </Text>
                           </View>
-                          <Text style={[styles.durationText, { color: colors.mutedForeground }]}>{formatShortDuration(duration)}</Text>
+                          <View style={styles.sessionActions}>
+                             <Text style={[styles.durationText, { color: colors.mutedForeground }]}>{formatShortDuration(duration)}</Text>
+                             <TouchableOpacity 
+                                onPress={() => { setEditingSession(s); setIsEditModalOpen(true); }}
+                                style={[styles.editBtn, { backgroundColor: colors.muted }]}
+                             >
+                                <Sparkles size={12} color={colors.primary} />
+                             </TouchableOpacity>
+                          </View>
                         </View>
                         {s.notes && (
                           <Text style={[styles.sessionNotes, { color: colors.mutedForeground, borderTopColor: colors.border + '20' }]} numberOfLines={1}>
@@ -184,6 +195,16 @@ export function DayDetailsModal({ visible, onClose, day, sessions, leave, onRefr
           </ScrollView>
         </View>
       </View>
+      
+      <EditSessionModal 
+        visible={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        session={editingSession}
+        onRefresh={() => {
+          onRefresh();
+          // We don't close the DayDetailsModal, just the edit one
+        }}
+      />
     </Modal>
   );
 }
@@ -291,6 +312,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  sessionActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  editBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   timeCluster: {
     flexDirection: 'row',

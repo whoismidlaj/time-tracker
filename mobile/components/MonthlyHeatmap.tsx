@@ -5,7 +5,9 @@ import { useTheme } from '../context/ThemeContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CELL_GAP = 6;
-const CELL_SIZE = (SCREEN_WIDTH - 48 - (CELL_GAP * 6)) / 7;
+// SCREEN_WIDTH - (paddingHorizontal 24 * 2) - (container padding 16 * 2) = SCREEN_WIDTH - 80
+const GRID_WIDTH = SCREEN_WIDTH - 80;
+const CELL_SIZE = Math.floor((GRID_WIDTH - (CELL_GAP * 6)) / 7);
 
 interface Props {
   monthDate: Date;
@@ -109,6 +111,15 @@ export function MonthlyHeatmap({ monthDate, sessions, leaves = [], weeklyHoliday
     );
   };
 
+  // Group days into rows of 7
+  const rows = useMemo(() => {
+    const r = [];
+    for (let i = 0; i < days.length; i += 7) {
+      r.push(days.slice(i, i + 7));
+    }
+    return r;
+  }, [days]);
+
   return (
     <View style={[styles.container, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <View style={styles.weekHeaders}>
@@ -119,7 +130,15 @@ export function MonthlyHeatmap({ monthDate, sessions, leaves = [], weeklyHoliday
         ))}
       </View>
       <View style={styles.grid}>
-        {days.map((day, i) => renderCell(day, i))}
+        {rows.map((row, rowIndex) => (
+          <View key={rowIndex} style={styles.row}>
+            {row.map((day, i) => renderCell(day, i))}
+            {/* Pad the last row if it's not full */}
+            {row.length < 7 && Array(7 - row.length).fill(null).map((_, i) => (
+                <View key={`last-pad-${i}`} style={styles.emptyCell} />
+            ))}
+          </View>
+        ))}
       </View>
     </View>
   );
@@ -134,7 +153,7 @@ const styles = StyleSheet.create({
   },
   weekHeaders: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: CELL_GAP,
     marginBottom: 8,
   },
   weekHeaderText: {
@@ -145,8 +164,10 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   grid: {
+    gap: CELL_GAP,
+  },
+  row: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: CELL_GAP,
   },
   cell: {

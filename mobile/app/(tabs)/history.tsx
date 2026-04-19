@@ -26,6 +26,7 @@ export default function HistoryScreen() {
   const [leaves, setLeaves] = useState<any[]>([]);
   const [settings, setSettings] = useState({ weeklyHolidays: DEFAULT_HOLIDAYS });
   const [selectedMonth, setSelectedMonth] = useState(new Date());
+  const [globalRecentSessions, setGlobalRecentSessions] = useState<any[]>([]);
   
   // UI State
   const [refreshing, setRefreshing] = useState(false);
@@ -46,8 +47,11 @@ export default function HistoryScreen() {
       }
 
       const { data } = await api.get(`/history?month=${month}&year=${year}`);
+      const { data: recentRes } = await api.get('/history?limit=10');
+      
       setSessions(data.sessions || []);
       setLeaves(data.leaves || []);
+      setGlobalRecentSessions(recentRes.sessions || []);
     } catch (err) {
       console.error('Fetch history error:', err);
     } finally {
@@ -94,9 +98,9 @@ export default function HistoryScreen() {
     });
   }, [selectedDay, leaves]);
 
-  const recentSessions = useMemo(() => {
-    return sessions.slice(0, 5).sort((a, b) => new Date(b.punch_in_time).getTime() - new Date(a.punch_in_time).getTime());
-  }, [sessions]);
+  const recentSessionsDisplay = useMemo(() => {
+    return globalRecentSessions.slice(0, 5);
+  }, [globalRecentSessions]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -180,12 +184,12 @@ export default function HistoryScreen() {
                 </View>
 
                 <View style={styles.sessionsList}>
-                    {recentSessions.length === 0 ? (
+                    {recentSessionsDisplay.length === 0 ? (
                         <View style={styles.emptySessions}>
                             <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No activity this month</Text>
                         </View>
                     ) : (
-                        recentSessions.map((item) => (
+                        recentSessionsDisplay.map((item) => (
                             <TouchableOpacity 
                                 key={item.id}
                                 style={[styles.sessionCard, { backgroundColor: colors.card, borderColor: colors.border }]}

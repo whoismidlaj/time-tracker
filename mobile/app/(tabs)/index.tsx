@@ -8,6 +8,7 @@ import api from '../../lib/api';
 import SyncManager from '../../lib/SyncManager';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
+import { DayDetailsModal } from '../../components/DayDetailsModal';
 import { 
   formatDuration, 
   calcSessionDurationMs, 
@@ -40,6 +41,8 @@ export default function TimerScreen() {
   const [settings, setSettings] = useState<any>(null);
   const [todaySessions, setTodaySessions] = useState<any[]>([]);
   const [allSessions, setAllSessions] = useState<any[]>([]);
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -505,19 +508,29 @@ export default function TimerScreen() {
                   </View>
                 ) : (
                   allSessions.map((s) => (
-                    <View key={s.id} style={[styles.historyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <TouchableOpacity 
+                      key={s.id} 
+                      style={[styles.historyCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                      onPress={() => {
+                        setSelectedDay(new Date(s.punch_in_time));
+                        setIsModalOpen(true);
+                      }}
+                    >
                       <View style={styles.historyMeta}>
                         <Text style={[styles.historyDate, { color: colors.foreground }]}>{formatDate(s.punch_in_time)}</Text>
-                        <Text style={[styles.historyDuration, { color: colors.primary }]}>
-                          {formatShortDuration((s.punch_out_time ? new Date(s.punch_out_time).getTime() : Date.now()) - new Date(s.punch_in_time).getTime() - (s.total_break_ms || 0))}
-                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                           <Text style={[styles.historyDuration, { color: colors.primary }]}>
+                             {formatShortDuration((s.punch_out_time ? new Date(s.punch_out_time).getTime() : Date.now()) - new Date(s.punch_in_time).getTime() - (s.total_break_ms || 0))}
+                           </Text>
+                           <MessageSquare size={12} color={colors.mutedForeground} opacity={0.4} />
+                        </View>
                       </View>
                       <View style={styles.historyTimes}>
                         <Text style={[styles.historyTimeRange, { color: colors.mutedForeground }]}>
                           {formatTime(s.punch_in_time)} — {s.punch_out_time ? formatTime(s.punch_out_time) : 'Active'}
                         </Text>
                       </View>
-                    </View>
+                    </TouchableOpacity>
                   ))
                 )}
               </View>
@@ -525,6 +538,15 @@ export default function TimerScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <DayDetailsModal 
+        visible={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        day={selectedDay}
+        sessions={allSessions}
+        leave={null} // Homepage doesn't show leaves usually, or we can fetch if needed
+        onRefresh={fetchHistory}
+      />
     </View>
   );
 }

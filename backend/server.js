@@ -16,7 +16,7 @@ import {
   getTodaySessions, getRecentSessions,
   toggleLeave, updateUserSettings, getUserSettings,
   getAppSettings, updateAppSetting, getUsersMetrics,
-  updateUser, createSupportTicket,
+  updateUser, deleteSession, updateSession, createSupportTicket,
   getSessionsByDateRange, getLeavesByDateRange,
   createOAuthUser
 } from './db/queries.js';
@@ -335,12 +335,33 @@ app.post('/api/session/manual', authenticate, async (req, res) => {
 });
 
 app.patch('/api/session/:id', authenticate, async (req, res) => {
-  const { timestamp } = req.body;
+  const { timestamp, punch_in_time, punch_out_time, notes, breaks } = req.body;
   try {
-    await punchOut(Number(req.params.id), req.user.id, timestamp);
+    if (punch_in_time || punch_out_time || notes || breaks) {
+      await updateSession(Number(req.params.id), req.user.id, {
+        punch_in_time,
+        punch_out_time,
+        notes,
+        breaks
+      });
+    } else {
+      await punchOut(Number(req.params.id), req.user.id, timestamp);
+    }
+    
     const statusData = await getUserStatus(req.user.id);
     syncEvents.broadcastStatus(req.user.id, statusData);
     res.json(statusData);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/session/:id', authenticate, async (req, res) => {
+  try {
+    await deleteSession(Number(req.params.id), req.user.id);
+    const statusData = await getUserStatus(req.user.id);
+    syncEvents.broadcastStatus(req.user.id, statusData);
+    res.json({ success: true, ...statusData });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

@@ -7,7 +7,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "build:stable": "set APP_ENV=production && npx expo prebuild --platform android && npx expo run:android --variant release"
+    "build:stable": "set \"APP_ENV=production\" && npx expo prebuild --clean --platform android && cd android && .\\gradlew assembleRelease"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",

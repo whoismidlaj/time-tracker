@@ -1,149 +1,94 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Alert, KeyboardAvoidingView, Platform } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { X, Clock, Coffee, Save, Trash2, Calendar, Plus } from 'lucide-react-native';
-import { useTheme } from '../context/ThemeContext';
-import api from '../lib/api';
 import { 
-  formatInputDateTime, 
-  parseLocalToUTC,
-  formatTime
-} from '../lib/utils';
+  View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, 
+  TextInput, ActivityIndicator, Platform, Alert 
+} from 'react-native';
+import { X, Calendar, Clock, Save, Trash2, Coffee, Ban, Calculator, Plus } from 'lucide-react-native';
+import { format, parseISO } from 'date-fns';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { useTheme } from '../context/ThemeContext';
+import { formatTime } from '../lib/utils';
+import api from '../lib/api';
 
-interface EditSessionModalProps {
-  session: any;
+interface Break {
+  id?: string | number;
+  break_start: string;
+  break_end: string | null;
+  is_ignored: boolean;
+}
+
+interface Session {
+  id: number | string;
+  punch_in_time: string;
+  punch_out_time: string | null;
+  notes: string | null;
+  breaks?: Break[];
+}
+
+interface Props {
   visible: boolean;
   onClose: () => void;
+  session: Session | null;
   onRefresh: () => void;
 }
 
-export default function EditSessionModal({ session, visible, onClose, onRefresh }: EditSessionModalProps) {
+export function EditSessionModal({ visible, onClose, session: initialSession, onRefresh }: Props) {
   const { colors, theme } = useTheme();
-  const [punchInDate, setPunchInDate] = useState('');
-  const [punchInTime, setPunchInTime] = useState('');
-  const [punchOutDate, setPunchOutDate] = useState('');
-  const [punchOutTime, setPunchOutTime] = useState('');
-  const [notes, setNotes] = useState('');
-  const [breaks, setBreaks] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  
+
+  const [punchIn, setPunchIn] = useState<Date>(new Date());
+  const [punchOut, setPunchOut] = useState<Date | null>(null);
+  const [notes, setNotes] = useState("");
+  const [breaks, setBreaks] = useState<Break[]>([]);
+
   // Picker States
-  const [activePicker, setActivePicker] = useState<{ type: 'in' | 'out' | 'breakIn' | 'breakOut' | 'dateIn' | 'dateOut', index?: number } | null>(null);
+  const [showInPicker, setShowInPicker] = useState(false);
+  const [showOutPicker, setShowOutPicker] = useState(false);
+  const [pickerMode, setPickerMode] = useState<'date' | 'time'>('date');
 
   useEffect(() => {
-    if (visible) {
-      if (session) {
-        const inVals = formatInputDateTime(session.punch_in_time);
-        setPunchInDate(inVals.date);
-        setPunchInTime(inVals.time);
-        
-        if (session.punch_out_time) {
-          const outVals = formatInputDateTime(session.punch_out_time);
-          setPunchOutDate(outVals.date);
-          setPunchOutTime(outVals.time);
-        } else {
-          setPunchOutDate('');
-          setPunchOutTime('');
-        }
-        
-        setNotes(session.notes || '');
-        setBreaks((session.breaks || []).map((b: any) => {
-          const bIn = formatInputDateTime(b.break_start);
-          const bOut = b.break_end ? formatInputDateTime(b.break_end) : { time: '' };
-          return {
-            ...b,
-            start_time: bIn.time,
-            end_time: bOut.time
-          };
-        }));
-      } else {
-        const now = formatInputDateTime(new Date().toISOString());
-        setPunchInDate(now.date);
-        setPunchInTime(now.time);
-        setPunchOutDate('');
-        setPunchOutTime('');
-        setNotes('');
-        setBreaks([]);
-      }
+    if (visible && initialSession) {
+      setPunchIn(new Date(initialSession.punch_in_time));
+      setPunchOut(initialSession.punch_out_time ? new Date(initialSession.punch_out_time) : null);
+      setNotes(initialSession.notes || "");
+      setBreaks(initialSession.breaks || []);
+    } else if (visible) {
+      setPunchIn(new Date());
+      setPunchOut(null);
+      setNotes("");
+      setBreaks([]);
     }
-  }, [visible, session]);
-
-  const onPickerChange = (event: any, selectedDate?: Date) => {
-    if (Platform.OS === 'android') setActivePicker(null);
-    if (!selectedDate) return;
-
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    
-    if (activePicker?.type === 'dateIn' || activePicker?.type === 'dateOut') {
-      const dateStr = `${selectedDate.getFullYear()}-${pad(selectedDate.getMonth() + 1)}-${pad(selectedDate.getDate())}`;
-      if (activePicker.type === 'dateIn') setPunchInDate(dateStr);
-      else setPunchOutDate(dateStr);
-    } else {
-      const timeStr = `${pad(selectedDate.getHours())}:${pad(selectedDate.getMinutes())}`;
-      if (activePicker?.type === 'in') setPunchInTime(timeStr);
-      else if (activePicker?.type === 'out') setPunchOutTime(timeStr);
-      else if (activePicker?.type === 'breakIn' && activePicker.index !== undefined) {
-        const newBreaks = [...breaks];
-        newBreaks[activePicker.index].start_time = timeStr;
-        setBreaks(newBreaks);
-      } else if (activePicker?.type === 'breakOut' && activePicker.index !== undefined) {
-        const newBreaks = [...breaks];
-        newBreaks[activePicker.index].end_time = timeStr;
-        setBreaks(newBreaks);
-      }
-    }
-  };
-
-  const getPickerDate = (dateStr: string, timeStr: string) => {
-    const [y, M, d] = (dateStr || '2024-01-01').split('-').map(Number);
-    const [h, m] = (timeStr || '00:00').split(':').map(Number);
-    const date = new Date();
-    date.setFullYear(y, M - 1, d);
-    date.setHours(h, m, 0, 0);
-    return date;
-  };
-
-  const displayTime = (timeStr: string) => {
-    if (!timeStr) return 'Not set';
-    const [h, m] = timeStr.split(':').map(Number);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    const displayH = h % 12 || 12;
-    return `${displayH}:${m.toString().padStart(2, '0')} ${ampm}`;
-  };
+  }, [visible, initialSession]);
 
   const handleSave = async () => {
+    if (loading) return;
+    
+    // Validation
+    if (punchOut && punchIn >= punchOut) {
+      Alert.alert("Error", "Punch out must be after punch in");
+      return;
+    }
+
     setLoading(true);
     try {
-      const inUTC = parseLocalToUTC(punchInDate, punchInTime);
-      const outUTC = punchOutDate && punchOutTime ? parseLocalToUTC(punchOutDate, punchOutTime) : null;
-
-      if (!inUTC) throw new Error("Punch-in time is required");
-
-      const processedBreaks = breaks.map(b => ({
-        break_start: parseLocalToUTC(punchInDate, b.start_time), // Using punch-in date as reference for breaks
-        break_end: b.end_time ? parseLocalToUTC(punchInDate, b.end_time) : null
-      }));
-
       const payload = {
-        punch_in_time: inUTC,
-        punch_out_time: outUTC,
+        punch_in_time: punchIn.toISOString(),
+        punch_out_time: punchOut?.toISOString() || null,
         notes,
-        breaks: processedBreaks,
-        action: session ? undefined : 'manual_entry'
+        breaks: breaks.map(b => ({
+          break_start: b.break_start,
+          break_end: b.break_end,
+          is_ignored: b.is_ignored
+        }))
       };
 
-      if (session) {
-        await api.patch(`/session/${session.id}`, payload);
-      } else {
-        await api.post('/session', payload);
-      }
-
-      if (onRefresh) onRefresh();
+      await api.patch(`/session/${initialSession?.id}`, payload);
+      onRefresh();
       onClose();
     } catch (err: any) {
-      Alert.alert("Error", err.response?.data?.error || err.message || "Failed to save session");
+      console.error('Save session error:', err);
+      Alert.alert("Error", err.response?.data?.error || "Failed to save session");
     } finally {
       setLoading(false);
     }
@@ -152,19 +97,20 @@ export default function EditSessionModal({ session, visible, onClose, onRefresh 
   const handleDelete = async () => {
     Alert.alert(
       "Delete Session",
-      "Are you sure you want to permanently delete this session and all its breaks?",
+      "Are you sure you want to delete this session? This action cannot be undone.",
       [
         { text: "Cancel", style: "cancel" },
         { 
           text: "Delete", 
-          style: "destructive", 
+          style: "destructive",
           onPress: async () => {
             setDeleting(true);
             try {
-              await api.delete(`/session/${session.id}`);
-              if (onRefresh) onRefresh();
+              await api.delete(`/session/${initialSession?.id}`);
+              onRefresh();
               onClose();
             } catch (err) {
+              console.error('Delete error:', err);
               Alert.alert("Error", "Failed to delete session");
             } finally {
               setDeleting(false);
@@ -176,174 +122,222 @@ export default function EditSessionModal({ session, visible, onClose, onRefresh 
   };
 
   const addBreak = () => {
-    const lastTime = breaks.length > 0 ? (breaks[breaks.length - 1].end_time || punchInTime) : punchInTime;
-    setBreaks([...breaks, { start_time: lastTime, end_time: '' }]);
+    const now = new Date().toISOString();
+    setBreaks([...breaks, { break_start: now, break_end: null, is_ignored: false }]);
   };
 
+  const updateBreak = (index: number, field: keyof Break, value: any) => {
+    const newBreaks = [...breaks];
+    newBreaks[index] = { ...newBreaks[index], [field]: value };
+    setBreaks(newBreaks);
+  };
+
+  const removeBreak = (index: number) => {
+    setBreaks(breaks.filter((_, i) => i !== index));
+  };
+
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} animationType="fade" transparent={true}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-          <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={{ flex: 1 }}
-          >
-            <View style={[styles.header, { borderBottomColor: colors.border }]}>
-              <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-                {session ? 'Edit Session' : 'Manual Entry'}
-              </Text>
-              <TouchableOpacity onPress={onClose} style={[styles.closeButton, { backgroundColor: colors.muted }]}>
-                <X size={20} color={colors.mutedForeground} />
-              </TouchableOpacity>
+        <View style={[styles.content, { backgroundColor: colors.background, borderColor: colors.border }]}>
+          <View style={styles.header}>
+            <View style={styles.titleGroup}>
+              <View style={[styles.iconBox, { backgroundColor: colors.primary + '20' }]}>
+                <Clock size={18} color={colors.primary} />
+              </View>
+              <Text style={[styles.title, { color: colors.foreground }]}>Edit Session</Text>
             </View>
+            <TouchableOpacity onPress={onClose} style={[styles.closeButton, { backgroundColor: colors.muted }]}>
+              <X size={18} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          </View>
 
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-              {/* Punch In */}
-              <View style={styles.inputGroup}>
-                <View style={styles.labelRow}>
-                  <Clock size={12} color="#10b981" />
-                  <Text style={[styles.label, { color: colors.mutedForeground }]}>PUNCH IN</Text>
-                </View>
-                <View style={styles.dateTimeRow}>
-                  <TouchableOpacity 
-                    onPress={() => setActivePicker({ type: 'dateIn' })}
-                    style={[styles.pickerTrigger, { backgroundColor: colors.muted, flex: 1.5 }]}
-                  >
-                    <Calendar size={14} color={colors.primary} />
-                    <Text style={[styles.pickerText, { color: colors.foreground }]}>{punchInDate || 'Date'}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    onPress={() => setActivePicker({ type: 'in' })}
-                    style={[styles.pickerTrigger, { backgroundColor: colors.muted, flex: 1 }]}
-                  >
-                    <Text style={[styles.pickerText, { color: colors.foreground }]}>{displayTime(punchInTime)}</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* Punch Out */}
-              <View style={styles.inputGroup}>
-                <View style={styles.labelRow}>
-                  <Clock size={12} color="#ef4444" />
-                  <Text style={[styles.label, { color: colors.mutedForeground }]}>PUNCH OUT</Text>
-                </View>
-                <View style={styles.dateTimeRow}>
-                  <TouchableOpacity 
-                    onPress={() => setActivePicker({ type: 'dateOut' })}
-                    style={[styles.pickerTrigger, { backgroundColor: colors.muted, flex: 1.5 }]}
-                  >
-                    <Calendar size={14} color={colors.destructive} />
-                    <Text style={[styles.pickerText, { color: colors.foreground }]}>{punchOutDate || 'Not set'}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    onPress={() => setActivePicker({ type: 'out' })}
-                    style={[styles.pickerTrigger, { backgroundColor: colors.muted, flex: 1 }]}
-                  >
-                    <Text style={[styles.pickerText, { color: colors.foreground }]}>{displayTime(punchOutTime)}</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* Notes */}
-              <View style={styles.inputGroup}>
-                <Text style={[styles.label, { color: colors.mutedForeground, marginBottom: 8 }]}>SESSION NOTES</Text>
-                <TextInput
-                  style={[styles.notesInput, { backgroundColor: colors.muted, color: colors.foreground }]}
-                  value={notes}
-                  onChangeText={setNotes}
-                  placeholder="What did you work on?"
-                  placeholderTextColor={colors.mutedForeground + '60'}
-                  multiline
-                />
-              </View>
-
-              {/* Breaks */}
-              <View style={styles.breaksSection}>
-                <View style={styles.sectionHeader}>
-                  <View style={styles.sectionTitleRow}>
-                    <Coffee size={14} color={colors.mutedForeground} />
-                    <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>BREAKS</Text>
-                  </View>
-                  <TouchableOpacity onPress={addBreak} style={[styles.addButton, { backgroundColor: colors.primary + '15' }]}>
-                    <Plus size={14} color={colors.primary} />
-                    <Text style={[styles.addButtonText, { color: colors.primary }]}>Add Break</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {breaks.map((brk, idx) => (
-                  <View key={idx} style={[styles.breakRow, { backgroundColor: colors.muted + '40', borderColor: colors.border }]}>
-                    <View style={styles.breakInputs}>
-                      <View style={styles.breakInputCol}>
-                        <Text style={[styles.breakInputLabel, { color: colors.mutedForeground }]}>START</Text>
-                        <TouchableOpacity 
-                          onPress={() => setActivePicker({ type: 'breakIn', index: idx })}
-                          style={[styles.breakPicker, { backgroundColor: colors.card }]}
-                        >
-                          <Text style={[styles.breakPickerText, { color: colors.foreground }]}>{displayTime(brk.start_time)}</Text>
-                        </TouchableOpacity>
-                      </View>
-                      <View style={styles.breakInputCol}>
-                        <Text style={[styles.breakInputLabel, { color: colors.mutedForeground }]}>END</Text>
-                        <TouchableOpacity 
-                          onPress={() => setActivePicker({ type: 'breakOut', index: idx })}
-                          style={[styles.breakPicker, { backgroundColor: colors.card }]}
-                        >
-                          <Text style={[styles.breakPickerText, { color: colors.foreground }]}>{displayTime(brk.end_time)}</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                    <TouchableOpacity onPress={() => setBreaks(breaks.filter((_, i) => i !== idx))} style={styles.trashIcon}>
-                      <Trash2 size={16} color={colors.destructive} />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-
-              <View style={styles.actions}>
-                {session && (
-                  <TouchableOpacity 
-                    style={[styles.deleteButton, { backgroundColor: colors.destructive + '15' }]} 
-                    onPress={handleDelete}
-                    disabled={deleting}
-                  >
-                    {deleting ? <ActivityIndicator size="small" color={colors.destructive} /> : <Trash2 size={20} color={colors.destructive} />}
-                  </TouchableOpacity>
-                )}
+          <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+            {/* Input Times */}
+            <View style={styles.section}>
+              <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Timing</Text>
+              
+              <View style={styles.timeRow}>
                 <TouchableOpacity 
-                  style={[styles.saveButton, { backgroundColor: colors.foreground }]} 
-                  onPress={handleSave}
-                  disabled={loading}
+                   style={[styles.timePickerBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+                   onPress={() => { setPickerMode('date'); setShowInPicker(true); }}
                 >
-                  {loading ? <ActivityIndicator size="small" color={colors.background} /> : (
-                    <View style={styles.buttonContent}>
-                      <Save size={18} color={colors.background} />
-                      <Text style={[styles.saveButtonText, { color: colors.background }]}>Save Session</Text>
-                    </View>
-                  )}
+                  <Calendar size={14} color={colors.mutedForeground} />
+                  <Text style={[styles.timeValue, { color: colors.foreground }]}>{format(punchIn, 'MMM do, yyyy')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                   style={[styles.timePickerBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+                   onPress={() => { setPickerMode('time'); setShowInPicker(true); }}
+                >
+                  <Clock size={14} color={colors.mutedForeground} />
+                  <Text style={[styles.timeValue, { color: colors.foreground }]}>{format(punchIn, 'hh:mm a')}</Text>
                 </TouchableOpacity>
               </View>
-            </ScrollView>
-          </KeyboardAvoidingView>
-          
-          {activePicker && (
-            <DateTimePicker
-              value={(() => {
-                if (activePicker.type === 'dateIn') return getPickerDate(punchInDate, '00:00');
-                if (activePicker.type === 'dateOut') return getPickerDate(punchOutDate || punchInDate, '00:00');
-                if (activePicker.type === 'in') return getPickerDate(punchInDate, punchInTime);
-                if (activePicker.type === 'out') return getPickerDate(punchOutDate || punchInDate, punchOutTime || punchInTime);
-                if (activePicker.type === 'breakIn' && activePicker.index !== undefined) return getPickerDate(punchInDate, breaks[activePicker.index].start_time);
-                if (activePicker.type === 'breakOut' && activePicker.index !== undefined) return getPickerDate(punchInDate, breaks[activePicker.index].end_time || breaks[activePicker.index].start_time);
-                return new Date();
-              })()}
-              mode={(activePicker.type === 'dateIn' || activePicker.type === 'dateOut') ? 'date' : 'time'}
-              is24Hour={false}
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-              onChange={onPickerChange}
-            />
-          )}
-        </SafeAreaView>
+
+              <View style={[styles.timeRow, { marginTop: 12 }]}>
+                <TouchableOpacity 
+                   style={[styles.timePickerBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+                   onPress={() => { setPickerMode('date'); setShowOutPicker(true); }}
+                >
+                  <Text style={[styles.timeLabel, { color: colors.mutedForeground }]}>OUT DATE</Text>
+                  <Text style={[styles.timeValue, { color: punchOut ? colors.foreground : colors.mutedForeground + '60' }]}>
+                    {punchOut ? format(punchOut, 'MMM do, yyyy') : 'Set end date'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                   style={[styles.timePickerBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+                   onPress={() => { setPickerMode('time'); setShowOutPicker(true); }}
+                >
+                  <Text style={[styles.timeLabel, { color: colors.mutedForeground }]}>OUT TIME</Text>
+                  <Text style={[styles.timeValue, { color: punchOut ? colors.foreground : colors.mutedForeground + '60' }]}>
+                    {punchOut ? format(punchOut, 'hh:mm a') : 'Set end time'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              
+              {!punchOut && (
+                 <TouchableOpacity onPress={() => setPunchOut(new Date())} style={styles.setNowBtn}>
+                   <Text style={{ color: colors.primary, fontSize: 10, fontWeight: '800' }}>END SESSION NOW</Text>
+                 </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Notes */}
+            <View style={styles.section}>
+              <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Session Notes</Text>
+              <TextInput
+                style={[styles.notesInput, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
+                placeholder="What did you work on?"
+                placeholderTextColor={colors.mutedForeground + '60'}
+                value={notes}
+                onChangeText={setNotes}
+                multiline
+              />
+            </View>
+
+            {/* Breaks */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Breaks</Text>
+                <TouchableOpacity onPress={addBreak} style={styles.addBreakBtn}>
+                  <Plus size={12} color={colors.primary} />
+                  <Text style={[styles.addBreakText, { color: colors.primary }]}>Add Break</Text>
+                </TouchableOpacity>
+              </View>
+              
+              <View style={styles.breakList}>
+                {breaks.map((b, i) => (
+                  <View key={i} style={[styles.breakCard, { backgroundColor: colors.card, borderColor: b.is_ignored ? '#f59e0b40' : colors.border }]}>
+                    <View style={styles.breakTimes}>
+                      <View style={styles.breakTimeCol}>
+                         <Text style={styles.breakTimeLabel}>START</Text>
+                         <TextInput
+                            style={[styles.breakTimeInput, { color: colors.foreground }]}
+                            value={format(new Date(b.break_start), 'HH:mm')}
+                            onChangeText={(val) => {
+                               try {
+                                 const d = new Date(b.break_start);
+                                 const [h, m] = val.split(':');
+                                 d.setHours(parseInt(h));
+                                 d.setMinutes(parseInt(m));
+                                 updateBreak(i, 'break_start', d.toISOString());
+                               } catch(e) {}
+                            }}
+                         />
+                      </View>
+                      <View style={styles.breakTimeCol}>
+                         <Text style={styles.breakTimeLabel}>END</Text>
+                         <TextInput
+                            style={[styles.breakTimeInput, { color: b.break_end ? colors.foreground : colors.mutedForeground + '40' }]}
+                            placeholder="--:--"
+                            value={b.break_end ? format(new Date(b.break_end), 'HH:mm') : ""}
+                            onChangeText={(val) => {
+                               try {
+                                 const d = b.break_end ? new Date(b.break_end) : new Date(b.break_start);
+                                 const [h, m] = val.split(':');
+                                 d.setHours(parseInt(h));
+                                 d.setMinutes(parseInt(m));
+                                 updateBreak(i, 'break_end', d.toISOString());
+                               } catch(e) {}
+                            }}
+                         />
+                      </View>
+                    </View>
+                    
+                    <View style={styles.breakActions}>
+                       <TouchableOpacity 
+                          onPress={() => updateBreak(i, 'is_ignored', !b.is_ignored)}
+                          style={[styles.breakIconBtn, b.is_ignored && { backgroundColor: '#f59e0b20' }]}
+                       >
+                         {b.is_ignored ? <Ban size={14} color="#f59e0b" /> : <Calculator size={14} color={colors.mutedForeground} />}
+                       </TouchableOpacity>
+                       <TouchableOpacity onPress={() => removeBreak(i)} style={styles.breakIconBtn}>
+                         <Trash2 size={14} color={colors.destructive} />
+                       </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+                {breaks.length === 0 && (
+                   <Text style={[styles.emptyBreaks, { color: colors.mutedForeground }]}>No breaks recorded</Text>
+                )}
+              </View>
+            </View>
+          </ScrollView>
+
+          <View style={styles.footer}>
+            <TouchableOpacity 
+              onPress={handleDelete} 
+              style={[styles.deleteBtn, { backgroundColor: colors.destructive + '15' }]}
+              disabled={loading || deleting}
+            >
+              {deleting ? <ActivityIndicator size="small" color={colors.destructive} /> : <Trash2 size={20} color={colors.destructive} />}
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              onPress={handleSave} 
+              style={[styles.saveBtn, { backgroundColor: colors.foreground }]}
+              disabled={loading || deleting}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color={colors.background} />
+              ) : (
+                <>
+                  <Save size={18} color={colors.background} />
+                  <Text style={[styles.saveBtnText, { color: colors.background }]}>Save Changes</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
+
+      {showInPicker && (
+        <DateTimePicker
+          value={punchIn}
+          mode={pickerMode}
+          is24Hour={false}
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={(event, date) => {
+            setShowInPicker(false);
+            if (date) setPunchIn(date);
+          }}
+        />
+      )}
+
+      {showOutPicker && (
+        <DateTimePicker
+          value={punchOut || new Date()}
+          mode={pickerMode}
+          is24Hour={false}
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={(event, date) => {
+            setShowOutPicker(false);
+            if (date) setPunchOut(date);
+          }}
+        />
+      )}
     </Modal>
   );
 }
@@ -351,175 +345,179 @@ export default function EditSessionModal({ session, visible, onClose, onRefresh 
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.8)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
   },
-  container: {
-    flex: 1,
-    marginTop: Platform.OS === 'ios' ? 0 : 20,
+  content: {
+    height: '92%',
+    borderTopLeftRadius: 40,
+    borderTopRightRadius: 40,
+    borderWidth: 1,
+    padding: 24,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-  },
-  closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scrollContent: {
-    padding: 24,
-    paddingBottom: 60,
-  },
-  inputGroup: {
     marginBottom: 24,
   },
-  labelRow: {
+  titleGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
-    paddingLeft: 4,
-  },
-  label: {
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-  },
-  dateTimeRow: {
-    flexDirection: 'row',
     gap: 12,
   },
-  pickerTrigger: {
-    height: 52,
-    borderRadius: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    gap: 10,
-  },
-  pickerText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  breakPicker: {
-    height: 38,
-    borderRadius: 8,
+  iconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  breakPickerText: {
-    fontSize: 11,
+  title: {
+    fontSize: 18,
     fontWeight: '800',
   },
-  notesInput: {
+  closeButton: {
+    width: 32,
+    height: 32,
     borderRadius: 16,
-    padding: 16,
-    fontSize: 14,
-    minHeight: 80,
-    textAlignVertical: 'top',
-    fontWeight: '600',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  breaksSection: {
-    marginBottom: 32,
-    marginTop: 8,
+  scrollView: {
+    flex: 1,
   },
-  sectionHeader: {
+  section: {
+    marginBottom: 24,
+  },
+  sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
-    paddingHorizontal: 4,
-  },
-  sectionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    marginBottom: 10,
   },
   sectionTitle: {
     fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-  },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
-  },
-  addButtonText: {
-    fontSize: 11,
     fontWeight: '800',
-  },
-  breakRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
     marginBottom: 10,
   },
-  breakInputs: {
-    flex: 1,
+  timeRow: {
     flexDirection: 'row',
     gap: 12,
   },
-  breakInputCol: {
+  timePickerBtn: {
     flex: 1,
+    padding: 16,
+    borderRadius: 18,
+    borderWidth: 1,
     gap: 4,
   },
-  breakInputLabel: {
+  timeLabel: {
     fontSize: 8,
     fontWeight: '800',
-    marginLeft: 2,
+    opacity: 0.6,
   },
-  trashIcon: {
-    padding: 10,
-    marginLeft: 4,
+  timeValue: {
+    fontSize: 14,
+    fontWeight: '700',
   },
-  actions: {
+  setNowBtn: {
+    marginTop: 8,
+    alignSelf: 'flex-end',
+    padding: 4,
+  },
+  notesInput: {
+    minHeight: 100,
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 16,
+    fontSize: 14,
+    textAlignVertical: 'top',
+    fontWeight: '500',
+  },
+  addBreakBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'transparent',
+  },
+  addBreakText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  breakList: {
+    gap: 10,
+  },
+  breakCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  breakTimes: {
+    flexDirection: 'row',
+    gap: 20,
+    flex: 1,
+  },
+  breakTimeCol: {
+    gap: 2,
+  },
+  breakTimeLabel: {
+    fontSize: 7,
+    fontWeight: '800',
+    opacity: 0.4,
+  },
+  breakTimeInput: {
+    fontSize: 15,
+    fontWeight: '800',
+    padding: 0,
+    minWidth: 50,
+  },
+  breakActions: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  breakIconBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyBreaks: {
+    textAlign: 'center',
+    fontSize: 12,
+    fontStyle: 'italic',
+    paddingVertical: 10,
+  },
+  footer: {
     flexDirection: 'row',
     gap: 12,
     marginTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 0,
   },
-  deleteButton: {
-    width: 60,
-    height: 60,
+  deleteBtn: {
+    width: 56,
+    height: 56,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  saveButton: {
+  saveBtn: {
     flex: 1,
-    height: 60,
+    height: 56,
     borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  buttonContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 10,
   },
-  saveButtonText: {
-    fontSize: 17,
+  saveBtnText: {
+    fontSize: 16,
     fontWeight: '800',
-  },
+  }
 });

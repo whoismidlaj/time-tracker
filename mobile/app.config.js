@@ -1,4 +1,5 @@
-const IS_PROD = process.env.APP_ENV === 'production';
+const APP_ENV = (process.env.APP_ENV || '').trim().toLowerCase();
+const IS_PROD = APP_ENV === 'production';
 
 export default {
   expo: {
