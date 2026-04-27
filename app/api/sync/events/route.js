@@ -5,16 +5,17 @@ export async function GET(request) {
   const userId = await getUserIdFromRequest(request);
   if (!userId) return new Response("Unauthorized", { status: 401 });
 
-  const encoder = new TextEncoder();
-
   const stream = new ReadableStream({
     async start(controller) {
+      let isClosed = false;
+      const encoder = new TextEncoder();
+
       const sendEvent = (event, data) => {
-        if (request.signal.aborted) return;
+        if (isClosed || request.signal.aborted) return;
         try {
           controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
         } catch (e) {
-          // Stream might be closed or errored
+          isClosed = true;
         }
       };
 
@@ -35,20 +36,27 @@ export async function GET(request) {
 
       // 3. Keep-Alive Heartbeat every 20s to prevent VPS timeouts
       const heartbeat = setInterval(() => {
-        controller.enqueue(encoder.encode(': heartbeat\n\n'));
+        if (isClosed || request.signal.aborted) return;
+        try {
+          controller.enqueue(encoder.encode(': heartbeat\n\n'));
+        } catch (e) {
+          isClosed = true;
+        }
       }, 20000);
 
       // 4. Cleanup when client disconnects
-  request.signal.addEventListener('abort', () => {
-    clearInterval(heartbeat);
-    syncEvents.off(`status-update:${userId}`, onStatusUpdate);
-    syncEvents.off(`settings-update:${userId}`, onSettingsUpdate);
-    try {
-      controller.close();
-    } catch (e) {
-      // Already closed
-    }
-  });
+      const cleanup = () => {
+        if (isClosed) return;
+        isClosed = true;
+        clearInterval(heartbeat);
+        syncEvents.off(`status-update:${userId}`, onStatusUpdate);
+        syncEvents.off(`settings-update:${userId}`, onSettingsUpdate);
+        try {
+          controller.close();
+        } catch (e) {}
+      };
+
+      request.signal.addEventListener('abort', cleanup);
     },
   });
 

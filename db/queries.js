@@ -197,12 +197,13 @@ export async function punchIn(userId, notes = null, timestamp = null) {
 async function ensureNoOverlap(userId, punchInTime, punchOutTime, sessionId = null) {
   const db = await getDb();
   const now = new Date();
+  const BUFFER_MS = 5 * 60 * 1000; // 5 minute buffer for clock drift
   
   // Future check
-  if (new Date(punchInTime) > now) {
+  if (new Date(punchInTime).getTime() > now.getTime() + BUFFER_MS) {
     throw new Error('Punch-in time cannot be in the future.');
   }
-  if (punchOutTime && new Date(punchOutTime) > now) {
+  if (punchOutTime && new Date(punchOutTime).getTime() > now.getTime() + BUFFER_MS) {
     throw new Error('Punch-out time cannot be in the future.');
   }
 
