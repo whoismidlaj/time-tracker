@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { X, Settings, Sparkles, Globe, CalendarDays } from "lucide-react";
+import { X, Settings, Sparkles, Globe, CalendarDays, RefreshCw } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle.jsx";
 import { getTimezone, DEFAULT_TIMEZONE, getOfficeStartTime, getOfficeEndTime, getBreakHours, getWeeklyHolidays } from "../lib/config.js";
 import { formatTimeString } from "../lib/utils.js";
@@ -88,6 +88,37 @@ export function SettingsModal() {
 
     // Reload to apply changes site-wide
     window.location.reload();
+  };
+
+  const handleForceRefresh = async () => {
+    if (typeof window === "undefined") return;
+    
+    // Unregister Service Workers
+    if ("serviceWorker" in navigator) {
+      try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const registration of registrations) {
+          await registration.unregister();
+        }
+      } catch (err) {
+        console.error("Failed to unregister SW", err);
+      }
+    }
+
+    // Clear Caches
+    if ("caches" in window) {
+      try {
+        const cacheNames = await caches.keys();
+        for (const cacheName of cacheNames) {
+          await caches.delete(cacheName);
+        }
+      } catch (err) {
+        console.error("Failed to clear caches", err);
+      }
+    }
+
+    // Force hard reload
+    window.location.href = window.location.origin + "?update=" + Date.now();
   };
 
   const timezones = [
@@ -213,6 +244,17 @@ export function SettingsModal() {
                 ))}
               </div>
               <p className="text-[8px] text-muted-foreground/60 px-0.5">Selected days will be marked as holidays in charts.</p>
+            </div>
+
+            <div className="pt-1">
+              <button
+                onClick={handleForceRefresh}
+                className="w-full flex items-center justify-center gap-2 py-2 text-[10px] font-bold text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-lg border border-dashed border-border/60 transition-all"
+              >
+                <RefreshCw className="h-3 w-3" />
+                Force Update & Clear Cache
+              </button>
+              <p className="text-[8px] text-muted-foreground/50 text-center mt-1">Use this if the app feels outdated or broken.</p>
             </div>
             
             <Dialog.Close asChild>

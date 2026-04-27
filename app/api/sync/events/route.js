@@ -10,7 +10,12 @@ export async function GET(request) {
   const stream = new ReadableStream({
     async start(controller) {
       const sendEvent = (event, data) => {
-        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        if (request.signal.aborted) return;
+        try {
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        } catch (e) {
+          // Stream might be closed or errored
+        }
       };
 
       // 1. Send initial status immediately on connect
@@ -34,11 +39,16 @@ export async function GET(request) {
       }, 20000);
 
       // 4. Cleanup when client disconnects
-      request.signal.addEventListener('abort', () => {
-        clearInterval(heartbeat);
-        syncEvents.off(`status-update:${userId}`, onStatusUpdate);
-        syncEvents.off(`settings-update:${userId}`, onSettingsUpdate);
-      });
+  request.signal.addEventListener('abort', () => {
+    clearInterval(heartbeat);
+    syncEvents.off(`status-update:${userId}`, onStatusUpdate);
+    syncEvents.off(`settings-update:${userId}`, onSettingsUpdate);
+    try {
+      controller.close();
+    } catch (e) {
+      // Already closed
+    }
+  });
     },
   });
 

@@ -27,7 +27,7 @@ async function ensureSuperAdmin(client) {
       [email.toLowerCase(), passwordHash, 'admin', 'Super Admin']
     );
   } else {
-    console.log('--- Automated Seeding: Synchronizing Superadmin from .env ---');
+    // Only log if something changed or during first run
     const passwordHash = hashPassword(password);
     await client.query(
       'UPDATE users SET role = $1, password_hash = $2, display_name = COALESCE(display_name, $3), is_active = TRUE WHERE email = $4', 
@@ -211,13 +211,13 @@ async function seedAppSettings(client) {
   }
 }
 
-let schemaEnsured = false;
+let schemaPromise = null;
 
 export default async function getDb() {
-  if (!schemaEnsured) {
-    await ensureSchema();
-    schemaEnsured = true;
+  if (!schemaPromise) {
+    schemaPromise = ensureSchema();
   }
+  await schemaPromise;
   return pool;
 }
 
