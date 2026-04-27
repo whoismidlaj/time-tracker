@@ -3,8 +3,9 @@ import { getUserIdFromRequest, getUserStatus } from "@/lib/api-utils.js";
 import syncEvents from "@/lib/sync-events.js";
 
 export async function POST(request) {
+  let userId = null;
   try {
-    const userId = await getUserIdFromRequest(request);
+    userId = await getUserIdFromRequest(request);
     if (!userId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await request.json();
